@@ -1,0 +1,9 @@
+
+Splits -------------------------------
+
+mmgen-seedsplit -o bip39 -d out file.bip39 1:2
+mmgen-seedsplit -o bip39 -d out file.bip39 2:2
+
+Join ---------------------------------
+
+mmgen-seedjoin -o bip39 -d out out/share1.bip39 out/share2.bip39
