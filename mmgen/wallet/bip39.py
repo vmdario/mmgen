@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -20,7 +20,7 @@ class wallet(wallet):
 	mn_type = 'BIP39'
 	wl_id = 'bip39'
 
-	def __init__(self,*args,**kwargs):
+	def __init__(self, *args, **kwargs):
 		from ..bip39 import bip39
 		self.conv_cls = bip39
-		super().__init__(*args,**kwargs)
+		super().__init__(*args, **kwargs)

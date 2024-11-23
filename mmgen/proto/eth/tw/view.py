@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -24,15 +24,15 @@ class EthereumTwView(TwView):
 		'twmmid': lambda i: i.twmmid.sort_key
 	}
 
-	def age_disp(self,o,age_fmt): # TODO
+	def age_disp(self, o, age_fmt): # TODO
 		pass
 
-	def get_disp_prec(self,wide):
+	def get_disp_prec(self, wide):
 		return self.proto.coin_amt.max_prec if wide else 8
 
-	def gen_subheader(self,cw,color):
+	def gen_subheader(self, cw, color):
 		if self.disp_prec == 8:
 			yield 'Balances truncated to 8 decimal points'
 		if self.cfg.cached_balances:
-			from ....color import nocolor,yellow
-			yield (nocolor,yellow)[color]('WARNING: Using cached balances. These may be out of date!')
+			from ....color import nocolor, yellow
+			yield (nocolor, yellow)[color]('WARNING: Using cached balances. These may be out of date!')

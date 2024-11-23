@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Licensed under the GNU General Public License, Version 3:
+#   https://www.gnu.org/licenses
+# Public project repositories:
+#   https://github.com/mmgen/mmgen-wallet
+#   https://gitlab.com/mmgen/mmgen-wallet
 
 """
 mmgen-xmrwallet: Perform various Monero wallet and transacting operations for
@@ -22,20 +14,15 @@ mmgen-xmrwallet: Perform various Monero wallet and transacting operations for
 """
 import asyncio
 
-from .cfg import gc,Config
-from .util import die,fmt_dict
-from .xmrwallet import (
-	MoneroWalletOps,
-	xmrwallet_uarg_info,
-	xmrwallet_uargs,
-	tx_priorities
-)
+from .cfg import gc, Config
+from .util import die, fmt_dict
+from . import xmrwallet
 
 opts_data = {
 	'sets': [
-		('autosign',True,'watch_only',True),
-		('autosign_mountpoint',bool,'autosign',True),
-		('autosign_mountpoint',bool,'watch_only',True),
+		('autosign', True, 'watch_only', True),
+		('autosign_mountpoint', bool, 'autosign', True),
+		('autosign_mountpoint', bool, 'watch_only', True),
 	],
 	'text': {
 		'desc': """Perform various Monero wallet and transacting operations for
@@ -54,8 +41,7 @@ opts_data = {
 		],
 		'options': """
 -h, --help                       Print this help message
---, --longhelp                   Print help message for long options (common
-                                 options)
+--, --longhelp                   Print help message for long (global) options
 -a, --autosign                   Use appropriate outdir and other params for
                                  autosigning operations (implies --watch-only).
                                  When this option is in effect, filename argu-
@@ -102,14 +88,14 @@ opts_data = {
 """
 	},
 	'code': {
-		'options': lambda cfg,s: s.format(
-			D=xmrwallet_uarg_info['daemon'].annot,
-			R=xmrwallet_uarg_info['tx_relay_daemon'].annot,
-			cfg=cfg,
-			gc=gc,
-			tp=fmt_dict(tx_priorities,fmt='equal_compact')
+		'options': lambda cfg, s: s.format(
+			D   = xmrwallet.uarg_info['daemon'].annot,
+			R   = xmrwallet.uarg_info['tx_relay_daemon'].annot,
+			cfg = cfg,
+			gc  = gc,
+			tp  = fmt_dict(xmrwallet.tx_priorities, fmt='equal_compact')
 		),
-		'notes': lambda help_mod,s: s.format(
+		'notes': lambda help_mod, s: s.format(
 			xmrwallet_help = help_mod('xmrwallet')
 		)
 	}
@@ -121,15 +107,15 @@ cmd_args = cfg._args
 
 if cmd_args and cfg.autosign and (
 		cmd_args[0] in (
-			MoneroWalletOps.kafile_arg_ops
+			xmrwallet.kafile_arg_ops
 			+ ('export-outputs', 'export-outputs-sign', 'import-key-images', 'txview', 'txlist')
 		)
 		or len(cmd_args) == 1 and cmd_args[0] in ('submit', 'resubmit', 'abort')
 	):
-	cmd_args.insert(1,None)
+	cmd_args.insert(1, None)
 
 if len(cmd_args) < 2:
-	cfg._opts.usage()
+	cfg._usage()
 
 op     = cmd_args.pop(0)
 infile = cmd_args.pop(0)
@@ -137,29 +123,27 @@ wallets = spec = None
 
 if op in ('relay', 'submit', 'resubmit', 'abort'):
 	if len(cmd_args) != 0:
-		cfg._opts.usage()
-elif op in ('txview','txlist'):
+		cfg._usage()
+elif op in ('txview', 'txlist'):
 	infile = [infile] + cmd_args
-elif op in ('create','sync','list','view','listview','dump','restore'): # kafile_arg_ops
+elif op in ('create', 'sync', 'list', 'view', 'listview', 'dump', 'restore'): # kafile_arg_ops
 	if len(cmd_args) > 1:
-		cfg._opts.usage()
+		cfg._usage()
 	wallets = cmd_args.pop(0) if cmd_args else None
 elif op in ('new', 'transfer', 'sweep', 'sweep_all', 'label'):
 	if len(cmd_args) != 1:
-		cfg._opts.usage()
+		cfg._usage()
 	spec = cmd_args[0]
 elif op in ('export-outputs', 'export-outputs-sign', 'import-key-images'):
-	if not cfg.autosign: # --autosign only for now - TODO
-		die(f'--autosign must be used with command {op!r}')
+	if not cfg.autosign:
+		die(1, f'--autosign must be used with command {op!r}')
 	if len(cmd_args) > 1:
-		cfg._opts.usage()
+		cfg._usage()
 	wallets = cmd_args.pop(0) if cmd_args else None
 else:
-	die(1,f'{op!r}: unrecognized operation')
+	die(1, f'{op!r}: unrecognized operation')
 
-op_cls = getattr(MoneroWalletOps,op.replace('-','_'))
-
-m = op_cls(cfg, xmrwallet_uargs(infile, wallets, spec))
+m = xmrwallet.op(op, cfg, infile, wallets, spec)
 
 if asyncio.run(m.main()):
 	m.post_main_success()

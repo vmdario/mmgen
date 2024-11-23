@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ autosign: Auto-sign MMGen transactions, message files and XMR wallet output file
 
 import sys
 
-from .util import msg,die,fmt_list,exit_if_mswin,async_run
+from .util import msg, die, fmt_list, exit_if_mswin, async_run
 
 exit_if_mswin('autosigning')
 
@@ -33,7 +33,7 @@ opts_data = {
 		'usage':'[opts] [operation]',
 		'options': """
 -h, --help            Print this help message
---, --longhelp        Print help message for long options (common options)
+--, --longhelp        Print help message for long (global) options
 -c, --coins=c         Coins to sign for (comma-separated list)
 -I, --no-insert-check Don’t check for device insertion
 -l, --seed-len=N      Specify wallet seed length of ‘N’ bits (for setup only)
@@ -160,7 +160,7 @@ is over.
 	'code': {
 		'options': lambda s: s.format(
 			asi     = asi,
-			mn_fmts = fmt_list( asi.mn_fmts, fmt='no_spc' ),
+			mn_fmts = fmt_list(asi.mn_fmts, fmt='no_spc'),
 		),
 		'notes': lambda s: s.format(asi=asi)
 	}
@@ -192,24 +192,24 @@ cfg = Config(
 		'hash_preset': '1',
 		'label': 'Autosign Wallet',
 	},
-	do_post_init = True )
+	caller_post_init = True)
 
-cmd = cfg._args[0] if len(cfg._args) == 1 else 'sign' if not cfg._args else cfg._opts.usage()
+cmd = cfg._args[0] if len(cfg._args) == 1 else 'sign' if not cfg._args else cfg._usage()
 
 if cmd not in Autosign.cmds + Autosign.util_cmds:
-	die(1,f'‘{cmd}’: unrecognized command')
+	die(1, f'‘{cmd}’: unrecognized command')
 
 if cmd != 'setup':
 	for opt in ('seed_len', 'mnemonic_fmt'):
-		if getattr(cfg,opt):
-			die(1, f'--{opt.replace("_","-")} makes sense only for the ‘setup’ operation')
+		if getattr(cfg, opt):
+			die(1, f'--{opt.replace("_", "-")} makes sense only for the ‘setup’ operation')
 
 if cmd not in ('sign', 'wait'):
 	for opt in ('no_summary', 'led', 'stealth_led', 'full_summary'):
-		if getattr(cfg,opt):
-			die(1, f'--{opt.replace("_","-")} makes no sense for the ‘{cmd}’ operation')
+		if getattr(cfg, opt):
+			die(1, f'--{opt.replace("_", "-")} makes no sense for the ‘{cmd}’ operation')
 
-asi = Autosign(cfg,cmd)
+asi = Autosign(cfg, cmd)
 
 cfg._post_init()
 
@@ -218,13 +218,13 @@ if cmd == 'gen_key':
 elif cmd == 'setup':
 	asi.setup()
 	from .ui import keypress_confirm
-	if cfg.xmrwallets and keypress_confirm( cfg, '\nContinue with Monero setup?', default_yes=True ):
+	if cfg.xmrwallets and keypress_confirm(cfg, '\nContinue with Monero setup?', default_yes=True):
 		msg('')
 		asi.xmr_setup()
 	asi.do_umount()
 elif cmd == 'xmr_setup':
 	if not cfg.xmrwallets:
-		die(1,'Please specify a wallet or range of wallets with the --xmrwallets option')
+		die(1, 'Please specify a wallet or range of wallets with the --xmrwallets option')
 	asi.do_mount()
 	asi.xmr_setup()
 	asi.do_umount()

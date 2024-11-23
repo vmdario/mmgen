@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ exception: Exception classes for the MMGen suite
 
 class MMGenError(Exception):
 
-	def __init__(self,errno,strerror,stdout):
+	def __init__(self, errno, strerror, stdout):
 		self.mmcode = errno
 		self.stdout = stdout
 		super().__init__(strerror)
@@ -48,6 +48,7 @@ class FileNotFound(Exception):            mmcode = 1
 class InvalidPasswdFormat(Exception):     mmcode = 1
 class CfgFileParseError(Exception):       mmcode = 1
 class UserOptError(Exception):            mmcode = 1
+class CmdlineOptError(Exception):         mmcode = 1
 class NoLEDSupport(Exception):            mmcode = 1
 class MsgFileFailedSID(Exception):        mmcode = 1
 class TestSuiteException(Exception):      mmcode = 1

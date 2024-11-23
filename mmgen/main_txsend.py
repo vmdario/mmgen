@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ mmgen-txsend: Broadcast a transaction signed by 'mmgen-txsign' to the network
 
 import sys
 
-from .cfg import gc,Config
+from .cfg import gc, Config
 from .util import async_run, die
 
 opts_data = {
@@ -35,7 +35,7 @@ opts_data = {
 		'usage':   '[opts] [signed transaction file]',
 		'options': """
 -h, --help      Print this help message
---, --longhelp  Print help message for long options (common options)
+--, --longhelp  Print help message for long (global) options
 -a, --autosign  Send an autosigned transaction created by ‘mmgen-txcreate
                 --autosign’.  The removable device is mounted and unmounted
                 automatically. The transaction file argument must be omitted
@@ -78,7 +78,7 @@ elif not cfg._args and cfg.autosign:
 		infile = si.get_unsent()
 		cfg._util.qmsg(f'Got signed transaction file ‘{infile}’')
 else:
-	cfg._opts.usage()
+	cfg._usage()
 
 if not cfg.status:
 	from .ui import do_license_msg
@@ -98,7 +98,7 @@ async def main():
 			quiet_open = True)
 
 	from .rpc import rpc_init
-	tx.rpc = await rpc_init(cfg,tx.proto)
+	tx.rpc = await rpc_init(cfg, tx.proto)
 
 	cfg._util.vmsg(f'Getting {tx.desc} ‘{tx.infile}’')
 

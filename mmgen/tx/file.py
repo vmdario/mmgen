@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,58 +19,122 @@
 """
 tx.file: Transaction file operations for the MMGen suite
 """
-import os
 
-from ..util import ymsg,make_chksum_6,die
-from ..obj import MMGenObject,HexStr,MMGenTxID,CoinTxID,MMGenTxComment
+import os, json
+
+from ..util import ymsg, make_chksum_6, die
+from ..obj import MMGenObject, HexStr, MMGenTxID, CoinTxID, MMGenTxComment
+from ..rpc import json_encoder
+
+def json_dumps(data):
+	return json.dumps(data, separators = (',', ':'), cls=json_encoder)
+
+def get_proto_from_coin_id(tx, coin_id, chain):
+	coin, tokensym = coin_id.split(':') if ':' in coin_id else (coin_id, None)
+
+	from ..protocol import CoinProtocol, init_proto
+	network = CoinProtocol.Base.chain_name_to_network(tx.cfg, coin, chain)
+
+	proto = init_proto(tx.cfg, coin, network=network, need_amt=True)
+
+	if tokensym:
+		proto.tokensym = tokensym
+
+	return proto
+
+def eval_io_data(tx, data, desc):
+	if not (desc == 'outputs' and tx.proto.base_coin == 'ETH'): # ETH txs can have no outputs
+		assert len(data), f'no {desc}!'
+	for d in data:
+		d['amt'] = tx.proto.coin_amt(d['amt'])
+	io, io_list = {
+		'inputs':  (tx.Input, tx.InputList),
+		'outputs': (tx.Output, tx.OutputList),
+	}[desc]
+	return io_list(parent=tx, data=[io(tx.proto, **d) for d in data])
 
 class MMGenTxFile(MMGenObject):
+	data_label = 'MMGenTransaction'
+	attrs = {
+		'chain': None,
+		'txid': MMGenTxID,
+		'send_amt': 'skip',
+		'timestamp': None,
+		'blockcount': None,
+		'serialized': None,
+	}
+	extra_attrs = {
+		'locktime': None,
+		'comment': MMGenTxComment,
+		'coin_txid': CoinTxID,
+		'sent_timestamp': None,
+	}
 
-	def __init__(self,tx):
+	def __init__(self, tx):
 		self.tx       = tx
-		self.chksum   = None
 		self.fmt_data = None
 		self.filename = None
 
-	def parse(self,infile,metadata_only=False,quiet_open=False):
+	def parse(self, infile, metadata_only=False, quiet_open=False):
 		tx = self.tx
+		from ..fileutil import get_data_from_file
+		data = get_data_from_file(tx.cfg, infile, f'{tx.desc} data', quiet=quiet_open)
+		if len(data) > tx.cfg.max_tx_file_size:
+			die('MaxFileSizeExceeded',
+				f'Transaction file size exceeds limit ({tx.cfg.max_tx_file_size} bytes)')
+		return (self.parse_data_json if data[0] == '{' else self.parse_data_legacy)(data, metadata_only)
 
-		def eval_io_data(raw_data,desc):
+	def parse_data_json(self, data, metadata_only):
+		tx = self.tx
+		tx.file_format = 'json'
+		outer_data = json.loads(data)
+		data = outer_data[self.data_label]
+		if outer_data['chksum'] != make_chksum_6(json_dumps(data)):
+			chk = make_chksum_6(json_dumps(data))
+			die(3, f'{self.data_label}: invalid checksum for TxID {data["txid"]} ({chk} != {outer_data["chksum"]})')
+
+		tx.proto = get_proto_from_coin_id(tx, data['coin_id'], data['chain'])
+
+		for k, v in self.attrs.items():
+			if v != 'skip':
+				setattr(tx, k, v(data[k]) if v else data[k])
+
+		if metadata_only:
+			return
+
+		for k, v in self.extra_attrs.items():
+			if k in data:
+				setattr(tx, k, v(data[k]) if v else data[k])
+
+		for k in ('inputs', 'outputs'):
+			setattr(tx, k, eval_io_data(tx, data[k], k))
+
+		tx.check_txfile_hex_data()
+
+		tx.parse_txfile_serialized_data() # Ethereum RLP or JSON data
+
+		assert tx.proto.coin_amt(data['send_amt']) == tx.send_amt, f'{data["send_amt"]} != {tx.send_amt}'
+
+	def parse_data_legacy(self, data, metadata_only):
+		tx = self.tx
+		tx.file_format = 'legacy'
+
+		def deserialize(raw_data, desc):
 			from ast import literal_eval
 			try:
-				d = literal_eval(raw_data)
+				return literal_eval(raw_data)
 			except:
-				if desc == 'inputs' and not quiet_open:
+				if desc == 'inputs':
 					ymsg('Warning: transaction data appears to be in old format')
 				import re
-				d = literal_eval(re.sub(r"[A-Za-z]+?\(('.+?')\)",r'\1',raw_data))
-			assert isinstance(d,list), f'{desc} data not a list!'
-			if not (desc == 'outputs' and tx.proto.base_coin == 'ETH'): # ETH txs can have no outputs
-				assert len(d), f'no {desc}!'
-			for e in d:
-				e['amt'] = tx.proto.coin_amt(e['amt'])
-				if 'label' in e:
-					e['comment'] = e['label']
-					del e['label']
-			io,io_list = {
-				'inputs':  ( tx.Input, tx.InputList ),
-				'outputs': ( tx.Output, tx.OutputList ),
-			}[desc]
-			return io_list( parent=tx, data=[io(tx.proto,**e) for e in d] )
-
-		from ..fileutil import get_data_from_file
-		tx_data = get_data_from_file( tx.cfg, infile, tx.desc+' data', quiet=quiet_open )
+				return literal_eval(re.sub(r"[A-Za-z]+?\(('.+?')\)", r'\1', raw_data))
 
 		desc = 'data'
 		try:
-			if len(tx_data) > tx.cfg.max_tx_file_size:
-				die('MaxFileSizeExceeded',
-					f'Transaction file size exceeds limit ({tx.cfg.max_tx_file_size} bytes)')
-			tx_data = tx_data.splitlines()
-			assert len(tx_data) >= 5,'number of lines less than 5'
-			assert len(tx_data[0]) == 6,'invalid length of first line'
-			self.chksum = HexStr(tx_data.pop(0))
-			assert self.chksum == make_chksum_6(' '.join(tx_data)),'file data does not match checksum'
+			tx_data = data.splitlines()
+			assert len(tx_data) >= 5, 'number of lines less than 5'
+			assert len(tx_data[0]) == 6, 'invalid length of first line'
+			assert HexStr(tx_data.pop(0)) == make_chksum_6(' '.join(tx_data)), 'file data does not match checksum'
 
 			if len(tx_data) == 7:
 				desc = 'sent timestamp'
@@ -78,25 +142,26 @@ class MMGenTxFile(MMGenObject):
 				assert _ == 'Sent', 'invalid sent timestamp line'
 
 			if len(tx_data) == 6:
-				assert len(tx_data[-1]) == 64,'invalid coin TxID length'
+				assert len(tx_data[-1]) == 64, 'invalid coin TxID length'
 				desc = 'coin TxID'
 				tx.coin_txid = CoinTxID(tx_data.pop(-1))
 
 			if len(tx_data) == 5:
 				# rough check: allow for 4-byte utf8 characters + base58 (4 * 11 / 8 = 6 (rounded up))
-				assert len(tx_data[-1]) < MMGenTxComment.max_len*6,'invalid comment length'
+				assert len(tx_data[-1]) < MMGenTxComment.max_len*6, 'invalid comment length'
 				c = tx_data.pop(-1)
 				if c != '-':
 					desc = 'encoded comment (not base58)'
 					from ..baseconv import baseconv
 					comment = baseconv('b58').tobytes(c).decode()
-					assert comment is not False,'invalid comment'
+					assert comment is not False, 'invalid comment'
 					desc = 'comment'
 					tx.comment = MMGenTxComment(comment)
 
 			desc = 'number of lines' # four required lines
-			( metadata, tx.serialized, inputs_data, outputs_data ) = tx_data
-			assert len(metadata) < 100,'invalid metadata length' # rough check
+			io_data = {}
+			(metadata, tx.serialized, io_data['inputs'], io_data['outputs']) = tx_data
+			assert len(metadata) < 100, 'invalid metadata length' # rough check
 			metadata = metadata.split()
 
 			if metadata[-1].startswith('LT='):
@@ -104,19 +169,13 @@ class MMGenTxFile(MMGenObject):
 				tx.locktime = int(metadata.pop()[3:])
 
 			desc = 'coin token in metadata'
-			coin = metadata.pop(0) if len(metadata) == 6 else 'BTC'
-			coin,tokensym = coin.split(':') if ':' in coin else (coin,None)
+			coin_id = metadata.pop(0) if len(metadata) == 6 else 'BTC'
 
 			desc = 'chain token in metadata'
 			tx.chain = metadata.pop(0).lower() if len(metadata) == 5 else 'mainnet'
 
-			from ..protocol import CoinProtocol,init_proto
-			network = CoinProtocol.Base.chain_name_to_network(tx.cfg,coin,tx.chain)
-
-			desc = 'initialization of protocol'
-			tx.proto = init_proto( tx.cfg, coin, network=network, need_amt=True )
-			if tokensym:
-				tx.proto.tokensym = tokensym
+			desc = 'coin_id or chain'
+			tx.proto = get_proto_from_coin_id(tx, coin_id, tx.chain)
 
 			desc = 'metadata (4 items)'
 			(txid, send_amt, tx.timestamp, blockcount) = metadata
@@ -133,15 +192,18 @@ class MMGenTxFile(MMGenObject):
 			tx.check_txfile_hex_data()
 			desc = 'Ethereum RLP or JSON data'
 			tx.parse_txfile_serialized_data()
-			desc = 'inputs data'
-			tx.inputs  = eval_io_data(inputs_data,'inputs')
-			desc = 'outputs data'
-			tx.outputs = eval_io_data(outputs_data,'outputs')
+			for k in ('inputs', 'outputs'):
+				desc = f'{k} data'
+				res = deserialize(io_data[k], k)
+				for d in res:
+					if 'label' in d:
+						d['comment'] = d['label']
+						del d['label']
+				setattr(tx, k, eval_io_data(tx, res, k))
 			desc = 'send amount in metadata'
-			from decimal import Decimal
-			assert Decimal(send_amt) == tx.send_amt, f'{send_amt} != {tx.send_amt}'
+			assert tx.proto.coin_amt(send_amt) == tx.send_amt, f'{send_amt} != {tx.send_amt}'
 		except Exception as e:
-			die(2,f'Invalid {desc} in transaction file: {e!s}')
+			die(2, f'Invalid {desc} in transaction file: {e!s}')
 
 	def make_filename(self):
 		tx = self.tx
@@ -151,7 +213,7 @@ class MMGenTxFile(MMGenObject):
 				yield '-' + tx.dcoin
 			yield f'[{tx.send_amt!s}'
 			if tx.is_replaceable():
-				yield ',{}'.format(tx.fee_abs2rel(tx.fee,to_unit=tx.fn_fee_unit))
+				yield ',{}'.format(tx.fee_abs2rel(tx.fee, to_unit=tx.fn_fee_unit))
 			if tx.get_serialized_locktime():
 				yield f',tl={tx.get_serialized_locktime()}'
 			yield ']'
@@ -162,42 +224,60 @@ class MMGenTxFile(MMGenObject):
 
 	def format(self):
 		tx = self.tx
+		coin_id = tx.coin + ('' if tx.coin == tx.dcoin else ':'+tx.dcoin)
 
-		def amt_to_str(d):
-			return {k: (str(d[k]) if k == 'amt' else d[k]) for k in d}
+		def format_data_legacy():
 
-		coin_id = '' if tx.coin == 'BTC' else tx.coin + ('' if tx.coin == tx.dcoin else ':'+tx.dcoin)
-		lines = [
-			'{}{} {} {} {} {}{}'.format(
-				(coin_id+' ' if coin_id else ''),
-				tx.chain.upper(),
-				tx.txid,
-				tx.send_amt,
-				tx.timestamp,
-				tx.blockcount,
-				(f' LT={tx.locktime}' if tx.locktime else ''),
-			),
-			tx.serialized,
-			ascii([amt_to_str(e._asdict()) for e in tx.inputs]),
-			ascii([amt_to_str(e._asdict()) for e in tx.outputs])
-		]
+			def amt_to_str(d):
+				return {k: (str(d[k]) if k == 'amt' else d[k]) for k in d}
 
-		if tx.comment:
-			from ..baseconv import baseconv
-			lines.append(baseconv('b58').frombytes(tx.comment.encode(),tostr=True))
+			lines = [
+				'{}{} {} {} {} {}{}'.format(
+					(f'{coin_id} ' if coin_id and tx.coin != 'BTC' else ''),
+					tx.chain.upper(),
+					tx.txid,
+					tx.send_amt,
+					tx.timestamp,
+					tx.blockcount,
+					(f' LT={tx.locktime}' if tx.locktime else ''),
+				),
+				tx.serialized,
+				ascii([amt_to_str(e._asdict()) for e in tx.inputs]),
+				ascii([amt_to_str(e._asdict()) for e in tx.outputs])
+			]
 
-		if tx.coin_txid:
-			if not tx.comment:
-				lines.append('-') # keep old tx files backwards compatible
-			lines.append(tx.coin_txid)
+			if tx.comment:
+				from ..baseconv import baseconv
+				lines.append(baseconv('b58').frombytes(tx.comment.encode(), tostr=True))
 
-		if tx.sent_timestamp:
-			lines.append(f'Sent {tx.sent_timestamp}')
+			if tx.coin_txid:
+				if not tx.comment:
+					lines.append('-') # keep old tx files backwards compatible
+				lines.append(tx.coin_txid)
 
-		self.chksum = make_chksum_6(' '.join(lines))
-		fmt_data = '\n'.join([self.chksum] + lines) + '\n'
+			if tx.sent_timestamp:
+				lines.append(f'Sent {tx.sent_timestamp}')
+
+			return '\n'.join([make_chksum_6(' '.join(lines))] + lines) + '\n'
+
+		def format_data_json():
+			data = json_dumps({
+					'coin_id': coin_id
+				} | {
+					k: getattr(tx, k) for k in self.attrs
+				} | {
+					'inputs':  [e._asdict() for e in tx.inputs],
+					'outputs': [e._asdict() for e in tx.outputs]
+				} | {
+					k: getattr(tx, k) for k in self.extra_attrs if getattr(tx, k)
+				})
+			return '{{"{}":{},"chksum":"{}"}}'.format(self.data_label, data, make_chksum_6(data))
+
+		fmt_data = {'json': format_data_json, 'legacy': format_data_legacy}[tx.file_format]()
+
 		if len(fmt_data) > tx.cfg.max_tx_file_size:
-			die( 'MaxFileSizeExceeded', f'Transaction file size exceeds limit ({tx.cfg.max_tx_file_size} bytes)' )
+			die('MaxFileSizeExceeded', f'Transaction file size exceeds limit ({tx.cfg.max_tx_file_size} bytes)')
+
 		return fmt_data
 
 	def write(self,
@@ -206,7 +286,7 @@ class MMGenTxFile(MMGenObject):
 		ask_write             = True,
 		ask_write_default_yes = False,
 		ask_tty               = True,
-		ask_overwrite         = True ):
+		ask_overwrite         = True):
 
 		if ask_write is False:
 			ask_write_default_yes = True
@@ -230,8 +310,8 @@ class MMGenTxFile(MMGenObject):
 			ignore_opt_outdir     = outdir)
 
 	@classmethod
-	def get_proto(cls,cfg,filename,quiet_open=False):
+	def get_proto(cls, cfg, filename, quiet_open=False):
 		from . import BaseTX
 		tmp_tx = BaseTX(cfg=cfg)
-		cls(tmp_tx).parse(filename,metadata_only=True,quiet_open=quiet_open)
+		cls(tmp_tx).parse(filename, metadata_only=True, quiet_open=quiet_open)
 		return tmp_tx.proto

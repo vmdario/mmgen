@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -15,13 +15,14 @@ proto.etc.params: Ethereum Classic protocol
 from ..eth.params import mainnet
 
 class mainnet(mainnet):
-	chain_names = ['classic','ethereum_classic']
+	chain_names = ['classic', 'ethereum_classic']
 	max_tx_fee  = '0.005'
 	coin_amt    = 'ETCAmt'
 	ignore_daemon_version = False
 
 class testnet(mainnet):
-	chain_names = ['morden','morden_testnet','classic-testnet']
+	chain_names = ['morden', 'morden_testnet', 'classic-testnet']
 
 class regtest(testnet):
 	chain_names = ['developmentchain']
+	decimal_prec = 64

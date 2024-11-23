@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -20,15 +20,15 @@ class Unsigned(Completed):
 	ext  = 'rawtx'
 	automount = False
 
-	def delete_attrs(self,desc,attr):
-		for e in getattr(self,desc):
-			if hasattr(e,attr):
-				delattr(e,attr)
+	def delete_attrs(self, desc, attr):
+		for e in getattr(self, desc):
+			if hasattr(e, attr):
+				delattr(e, attr)
 
-	def get_sids(self,desc):
+	def get_sids(self, desc):
 		return remove_dups(
-			(e.mmid.sid for e in getattr(self,desc) if e.mmid),
-			quiet = True )
+			(e.mmid.sid for e in getattr(self, desc) if e.mmid),
+			quiet = True)
 
 class AutomountUnsigned(Unsigned):
 	desc = 'unsigned automount transaction'

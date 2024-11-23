@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -26,7 +26,7 @@ opts_data = {
 		'usage':'[options]',
 		'options': """
 -h, --help           Print this help message
---, --longhelp       Print help message for long options (common options)
+--, --longhelp       Print help message for long (global) options
 """,
 	},
 }

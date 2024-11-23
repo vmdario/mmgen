@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -12,13 +12,10 @@
 proto.eth.addrgen: Ethereum address generation class for the MMGen suite
 """
 
-from ...addrgen import addr_generator,check_data
-from ...addr import CoinAddr
+from ...addrgen import addr_generator, check_data
 
 class ethereum(addr_generator.keccak):
 
 	@check_data
-	def to_addr(self,data):
-		return CoinAddr(
-			self.proto,
-			self.keccak_256(data.pubkey[1:]).hexdigest()[24:] )
+	def to_addr(self, data):
+		return self.proto.pubhash2addr(self.keccak_256(data.pubkey[1:]).digest()[12:], 'p2pkh')

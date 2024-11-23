@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -25,14 +25,14 @@ async def main():
 
 	assert cfg.coin == 'BTC' and cfg.network == 'mainnet', 'This script works only on BTC mainnet!'
 
-	c = await rpc_init( cfg, ignore_wallet=True )
+	c = await rpc_init(cfg, ignore_wallet=True)
 
-	tx = await c.call('getrawtransaction',txid,True)
+	tx = await c.call('getrawtransaction', txid, True)
 
-	chunks = [''.join( d['scriptPubKey']['asm'].split()[1:4] ) for d in tx['vout']]
+	chunks = [''.join(d['scriptPubKey']['asm'].split()[1:4]) for d in tx['vout']]
 
-	with open(fn,'wb') as f:
-		f.write(bytes.fromhex( ''.join(chunks)[16:368600] ))
+	with open(fn, 'wb') as f:
+		f.write(bytes.fromhex(''.join(chunks)[16:368600]))
 
 	print(f'Wrote {fn}')
 

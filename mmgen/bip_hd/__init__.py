@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -55,7 +55,7 @@ def parse_version_bytes(vb_hex):
 
 def compress_pubkey(pubkey_bytes):
 	# see: proto.secp256k1.keygen.pubkey_format()
-	return (b'\x02',b'\x03')[pubkey_bytes[-1] & 1] + pubkey_bytes[1:33]
+	return (b'\x02', b'\x03')[pubkey_bytes[-1] & 1] + pubkey_bytes[1:33]
 
 def decompress_pubkey(pubkey_bytes):
 	import ecdsa
@@ -136,7 +136,7 @@ def check_privkey(key_int):
 
 class BipHDConfig(Lockable):
 
-	supported_coins = ('btc', 'eth', 'doge', 'ltc')
+	supported_coins = ('btc', 'eth', 'doge', 'ltc', 'bch')
 
 	def __init__(self, base_cfg, coin, network, addr_type, from_path, no_path_checks):
 

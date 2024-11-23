@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -8,7 +8,7 @@
 #   https://github.com/mmgen/mmgen-wallet
 #   https://gitlab.com/mmgen/mmgen-wallet
 
-all_tests="dep dev lint obj color unit hash ref altref altgen xmr eth autosign btc btc_tn btc_rt bch bch_tn bch_rt ltc ltc_tn ltc_rt tool tool2 gen alt"
+all_tests="dep dev lint obj color daemon mod hash ref altref altgen xmr eth autosign btc btc_tn btc_rt bch bch_tn bch_rt ltc ltc_tn ltc_rt tool tool2 gen alt help"
 
 groups_desc="
 	default  - All tests minus the extra tests
@@ -19,10 +19,10 @@ groups_desc="
 "
 
 init_groups() {
-	dfl_tests='dep alt obj color unit hash ref tool tool2 gen autosign btc btc_tn btc_rt altref altgen bch bch_rt ltc ltc_rt eth etc xmr'
+	dfl_tests='dep alt obj color daemon mod hash ref tool tool2 gen help autosign btc btc_tn btc_rt altref altgen bch bch_rt ltc ltc_rt eth etc xmr'
 	extra_tests='dep dev lint autosign_live ltc_tn bch_tn'
-	noalt_tests='dep alt obj color unit hash ref tool tool2 gen autosign btc btc_tn btc_rt'
-	quick_tests='dep alt obj color unit hash ref tool tool2 gen autosign btc btc_rt altref altgen eth etc xmr'
+	noalt_tests='dep alt obj color daemon mod hash ref tool tool2 gen help autosign btc btc_tn btc_rt'
+	quick_tests='dep alt obj color daemon mod hash ref tool tool2 gen help autosign btc btc_rt altref altgen eth etc xmr'
 	qskip_tests='lint btc_tn bch bch_rt ltc ltc_rt'
 	noalt_ok_tests='lint'
 
@@ -61,7 +61,10 @@ init_tests() {
 	t_color='- test/colortest.py'
 
 	d_dep="system and testing dependencies"
-	t_dep="- $unit_tests_py testdep dep daemon.exec"
+	t_dep="
+		- $modtest_py testdep dep
+		- $daemontest_py exec
+	"
 
 	d_dev="developer scripts ${YELLOW}(additional dependencies required)$RESET"
 	t_dev="
@@ -73,17 +76,20 @@ init_tests() {
 	t_lint="
 		b $pylint $PYLINT_OPTS mmgen
 		b $pylint $PYLINT_OPTS test
-		b $pylint $PYLINT_OPTS --disable=relative-beyond-top-level test/cmdtest_py_d
+		b $pylint $PYLINT_OPTS --disable=relative-beyond-top-level test/cmdtest_d
 		a $pylint $PYLINT_OPTS --ignore-paths '.*/eth/.*' mmgen
 		a $pylint $PYLINT_OPTS --ignore-paths '.*/ut_dep.py,.*/ut_testdep.py' test
-		a $pylint $PYLINT_OPTS --ignore-paths '.*/ct_ethdev.py' --disable=relative-beyond-top-level test/cmdtest_py_d
+		a $pylint $PYLINT_OPTS --ignore-paths '.*/ct_ethdev.py' --disable=relative-beyond-top-level test/cmdtest_d
 		- $pylint $PYLINT_OPTS examples
 	"
 
 	if [ "$SKIP_ALT_DEP" ]; then t_lint_skip='b'; else t_lint_skip='a'; fi
 
-	d_unit="low-level subsystems"
-	t_unit="- $unit_tests_py --exclude testdep,dep,daemon"
+	d_daemon="low-level subsystems involving coin daemons"
+	t_daemon="- $daemontest_py --exclude exec"
+
+	d_mod="low-level subsystems"
+	t_mod="- $modtest_py --exclude testdep,dep"
 
 	d_hash="internal hash function implementations"
 	t_hash="
@@ -141,23 +147,21 @@ init_tests() {
 		z #   zcash-mini
 		z $gentest_py --coin=zec --type=zcash_z all:zcash-mini $rounds50x
 	"
-
 	[ "$MSYS2" ] && t_altgen_skip='z'    # no zcash-mini (golang)
 	[ "$ARM32" ] && t_altgen_skip='z e'
 	[ "$FAST" ]  && t_altgen_skip+=' M'
 	# ARM ethkey available only on Arch Linux:
 	[ \( "$ARM32" -o "$ARM64" \) -a "$DISTRO" != 'archarm' ] && t_altgen_skip+=' e'
 
-	d_xmr="Monero xmrwallet operations"
-	t_xmr="
-		- $HTTP_LONG_TIMEOUT$cmdtest_py$PEXPECT_LONG_TIMEOUT --coin=xmr
+	d_help="helpscreens for selected coins"
+	t_help="
+		- $cmdtest_py --coin=btc help
+		a $cmdtest_py --coin=bch help
+		a $cmdtest_py --coin=eth help
+		a $cmdtest_py --coin=xmr help
+		a $cmdtest_py --coin=doge help:helpscreens help:longhelpscreens
 	"
-
-	d_eth="operations for Ethereum using devnet"
-	t_eth="geth $cmdtest_py --coin=eth ethdev"
-
-	d_etc="operations for Ethereum Classic using devnet"
-	t_etc="parity $cmdtest_py --coin=etc ethdev"
+	[ "$SKIP_ALT_DEP" ] && t_help_skip='a'
 
 	d_autosign="transaction autosigning with automount"
 	t_autosign="
@@ -176,7 +180,7 @@ init_tests() {
 
 	d_btc="overall operations with emulated RPC data (Bitcoin)"
 	t_btc="
-		- $cmdtest_py --exclude regtest,autosign,autosign_clean,autosign_automount,ref_altcoin
+		- $cmdtest_py --exclude regtest,autosign,autosign_clean,autosign_automount,ref_altcoin,help
 		- $cmdtest_py --segwit
 		- $cmdtest_py --segwit-random
 		- $cmdtest_py --bech32
@@ -193,21 +197,28 @@ init_tests() {
 	d_btc_rt="overall operations using the regtest network (Bitcoin)"
 	t_btc_rt="
 		- $cmdtest_py regtest
-		- $cmdtest_py regtest_legacy
+		x $cmdtest_py regtest_legacy
 	"
+	[ "$FAST" ]  && t_btc_skip='x'
 
 	d_bch="overall operations with emulated RPC data (Bitcoin Cash Node)"
-	t_bch="- $cmdtest_py --coin=bch --exclude regtest"
+	t_bch="
+		- $cmdtest_py --coin=bch --exclude regtest,autosign_automount,help
+		- $cmdtest_py --coin=bch --cashaddr=0 ref3_addr
+	"
 
 	d_bch_tn="overall operations with emulated RPC data (Bitcoin Cash Node testnet)"
-	t_bch_tn="- $cmdtest_py --coin=bch --testnet=1"
+	t_bch_tn="
+		- $cmdtest_py --coin=bch --testnet=1
+		- $cmdtest_py --coin=bch --testnet=1 --cashaddr=0 ref3_addr
+	"
 
 	d_bch_rt="overall operations using the regtest network (Bitcoin Cash Node)"
 	t_bch_rt="- $cmdtest_py --coin=bch regtest"
 
 	d_ltc="overall operations with emulated RPC data (Litecoin)"
 	t_ltc="
-		- $cmdtest_py --coin=ltc --exclude regtest
+		- $cmdtest_py --coin=ltc --exclude regtest,autosign_automount,help
 		- $cmdtest_py --coin=ltc --segwit
 		- $cmdtest_py --coin=ltc --segwit-random
 		- $cmdtest_py --coin=ltc --bech32
@@ -223,6 +234,17 @@ init_tests() {
 
 	d_ltc_rt="overall operations using the regtest network (Litecoin)"
 	t_ltc_rt="- $cmdtest_py --coin=ltc regtest"
+
+	d_eth="operations for Ethereum using devnet"
+	t_eth="geth $cmdtest_py --coin=eth ethdev"
+
+	d_etc="operations for Ethereum Classic using devnet"
+	t_etc="parity $cmdtest_py --coin=etc ethdev"
+
+	d_xmr="Monero xmrwallet operations"
+	t_xmr="
+		- $HTTP_LONG_TIMEOUT$cmdtest_py$PEXPECT_LONG_TIMEOUT --coin=xmr --exclude help
+	"
 
 	d_tool2="'mmgen-tool' utility with data check"
 	t_tool2="
@@ -286,6 +308,9 @@ init_tests() {
 		a $gentest_py --coin=ltc --type=segwit 1 $REFDIR/litecoin/ltcwallet-segwit.dump
 		a $gentest_py --coin=ltc --type=bech32 1 $REFDIR/litecoin/ltcwallet-bech32.dump
 		a $gentest_py --coin=ltc --type=compressed --testnet=1 1 $REFDIR/litecoin/ltcwallet-testnet.dump
+		a $gentest_py --coin=bch --type=compressed --cashaddr=0 1 $REFDIR/bitcoin_cash/bchwallet.dump
+		a $gentest_py --coin=bch --type=compressed --cashaddr=1 1 $REFDIR/bitcoin_cash/bchwallet.dump
+		a $gentest_py --coin=bch --type=compressed --testnet=1 1 $REFDIR/bitcoin_cash/bchwallet-testnet.dump
 		- # libsecp256k1 vs python-ecdsa:
 		- $gentest_py --type=legacy 1:2 $rounds100x
 		- $gentest_py --type=compressed 1:2 $rounds100x

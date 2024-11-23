@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -20,11 +20,11 @@ class Completed(Base):
 	"""
 	filename_api = True
 
-	def __init__(self,cfg,*args,filename=None,data=None,quiet_open=False,**kwargs):
+	def __init__(self, cfg, *args, filename=None, data=None, quiet_open=False, **kwargs):
 
 		assert (filename or data) and not (filename and data), 'CompletedTX_chk1'
 
-		super().__init__(cfg=cfg,*args,**kwargs)
+		super().__init__(cfg=cfg, *args, **kwargs)
 
 		if data:
 			self.__dict__ = data | {'twctl': self.twctl}
@@ -40,7 +40,7 @@ class Completed(Base):
 
 			if self.check_sigs() != self.signed:
 				from ..util import die
-				die(1,'Transaction is {}signed!'.format('not ' if self.signed else ''))
+				die(1, 'Transaction is {}signed!'.format('not ' if self.signed else ''))
 
 			self.infile = filename
 

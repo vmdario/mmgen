@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -12,7 +12,7 @@
 wallet.plainhex: plain hexadecimal wallet class
 """
 
-from ..util import msg,is_hex_str_lc
+from ..util import msg, is_hex_str_lc
 from ..seed import Seed
 from .unenc import wallet
 
@@ -36,7 +36,7 @@ class wallet(wallet):
 			msg(f'Invalid data length ({len(d)}) in {desc}')
 			return False
 
-		self.seed = Seed( self.cfg, bytes.fromhex(d) )
+		self.seed = Seed(self.cfg, bytes.fromhex(d))
 
 		self.check_usr_seed_len()
 

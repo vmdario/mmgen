@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -14,7 +14,7 @@ altcoin.util: various altcoin-related utilities
 
 from ..util import die
 
-def decrypt_keystore(data,passwd,mac_algo=None,mac_params={}):
+def decrypt_keystore(data, passwd, mac_algo=None, mac_params={}):
 	"""
 	Decrypt the encrypted data in a cross-chain keystore
 	Returns the decrypted data as a bytestring
@@ -23,14 +23,14 @@ def decrypt_keystore(data,passwd,mac_algo=None,mac_params={}):
 	cdata = data['crypto']
 	parms = cdata['kdfparams']
 
-	valid_kdfs = ['scrypt','pbkdf2']
-	valid_ciphers = ['aes-128-ctr','aes-256-ctr']
+	valid_kdfs = ['scrypt', 'pbkdf2']
+	valid_ciphers = ['aes-128-ctr', 'aes-256-ctr']
 
 	if (kdf := cdata['kdf']) not in valid_kdfs:
 		die(1, f'unsupported key derivation function {kdf!r} (must be one of {valid_kdfs})')
 
 	if (cipher := cdata['cipher']) not in valid_ciphers:
-		die(1,f'unsupported cipher {cipher!r} (must be one of {valid_ciphers})')
+		die(1, f'unsupported cipher {cipher!r} (must be one of {valid_ciphers})')
 
 	# Derive encryption key from password:
 	if kdf == 'scrypt':
@@ -72,7 +72,7 @@ def decrypt_keystore(data,passwd,mac_algo=None,mac_params={}):
 		die(1, 'incorrect password')
 
 	# Decrypt data:
-	from cryptography.hazmat.primitives.ciphers import Cipher,algorithms,modes
+	from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 	from cryptography.hazmat.backends import default_backend
 	cipher_len = int(cipher.split('-')[1]) // 8
 	c = Cipher(

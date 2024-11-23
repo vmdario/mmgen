@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -21,8 +21,8 @@ mmgen-txbump: Increase the fee on a replaceable (replace-by-fee) MMGen
               transaction, and optionally sign and send it
 """
 
-from .cfg import gc,Config
-from .util import msg,msg_r,die,async_run
+from .cfg import gc, Config
+from .util import msg, msg_r, die, async_run
 from .color import green
 
 opts_data = {
@@ -36,7 +36,7 @@ opts_data = {
 		'usage':   f'[opts] [{gc.proj_name} TX file] [seed source] ...',
 		'options': """
 -h, --help             Print this help message
---, --longhelp         Print help message for long options (common options)
+--, --longhelp         Print help message for long (global) options
 -a, --autosign         Bump the most recent transaction created and sent with
                        the --autosign option. The removable device is mounted
                        and unmounted automatically.  The transaction file
@@ -80,7 +80,7 @@ opts_data = {
 -z, --show-hash-presets Show information on available hash presets
 """,
 	'notes': """
-{}{}
+{e}{s}
 Seed source files must have the canonical extensions listed in the 'FileExt'
 column below:
 
@@ -90,21 +90,21 @@ FMT CODES:
 """
 	},
 	'code': {
-		'options': lambda cfg,help_notes,proto,s: s.format(
-			cfg=cfg,
-			gc=gc,
-			pnm=gc.proj_name,
-			pnl=gc.proj_name.lower(),
-			fu=help_notes('rel_fee_desc'),
-			fl=help_notes('fee_spec_letters'),
-			kgs=help_notes('keygen_backends'),
-			coin_id=help_notes('coin_id'),
-			dsl=help_notes('dfl_seed_len'),
-			cu=proto.coin),
-		'notes': lambda help_notes,s: s.format(
-			help_notes('fee'),
-			help_notes('txsign'),
-			f=help_notes('fmt_codes')),
+		'options': lambda cfg, help_notes, proto, s: s.format(
+			cfg     = cfg,
+			gc      = gc,
+			pnm     = gc.proj_name,
+			pnl     = gc.proj_name.lower(),
+			fu      = help_notes('rel_fee_desc'),
+			fl      = help_notes('fee_spec_letters'),
+			kgs     = help_notes('keygen_backends'),
+			coin_id = help_notes('coin_id'),
+			dsl     = help_notes('dfl_seed_len'),
+			cu      = proto.coin),
+		'notes': lambda help_notes, s: s.format(
+			e       = help_notes('fee'),
+			s       = help_notes('txsign'),
+			f       = help_notes('fmt_codes')),
 	}
 }
 
@@ -116,9 +116,9 @@ if not cfg.autosign:
 	check_infile(tx_file)
 
 from .tx import CompletedTX, BumpTX, UnsignedTX, OnlineSignedTX
-from .tx.sign import txsign,get_seed_files,get_keyaddrlist,get_keylist
+from .tx.sign import txsign, get_seed_files, get_keyaddrlist, get_keylist
 
-seed_files = get_seed_files(cfg,cfg._args) if (cfg._args or cfg.send) else None
+seed_files = get_seed_files(cfg, cfg._args) if (cfg._args or cfg.send) else None
 
 from .ui import do_license_msg
 do_license_msg(cfg)
@@ -158,10 +158,10 @@ async def main():
 		data = orig_tx.__dict__,
 		automount = cfg.autosign,
 		check_sent = cfg.autosign or sign_and_send,
-		twctl = await TwCtl(cfg,orig_tx.proto) if orig_tx.proto.tokensym else None )
+		twctl = await TwCtl(cfg, orig_tx.proto) if orig_tx.proto.tokensym else None)
 
 	from .rpc import rpc_init
-	tx.rpc = await rpc_init(cfg,tx.proto)
+	tx.rpc = await rpc_init(cfg, tx.proto)
 
 	msg('Creating replacement transaction')
 
@@ -172,9 +172,9 @@ async def main():
 	if not silent:
 		msg(f'Minimum fee for new transaction: {tx.min_fee.hl()} {tx.proto.coin}')
 
-	tx.usr_fee = tx.get_usr_fee_interactive(fee=cfg.fee,desc='User-selected')
+	tx.usr_fee = tx.get_usr_fee_interactive(fee=cfg.fee, desc='User-selected')
 
-	tx.bump_fee(output_idx,tx.usr_fee)
+	tx.bump_fee(output_idx, tx.usr_fee)
 
 	assert tx.fee <= tx.proto.max_tx_fee
 
@@ -193,15 +193,15 @@ async def main():
 		msg_r(tx.info.format(terse=True))
 
 	if sign_and_send:
-		tx2 = UnsignedTX(cfg=cfg,data=tx.__dict__)
-		tx3 = await txsign(cfg,tx2,seed_files,kl,kal)
+		tx2 = UnsignedTX(cfg=cfg, data=tx.__dict__)
+		tx3 = await txsign(cfg, tx2, seed_files, kl, kal)
 		if tx3:
-			tx4 = await OnlineSignedTX(cfg=cfg,data=tx3.__dict__)
+			tx4 = await OnlineSignedTX(cfg=cfg, data=tx3.__dict__)
 			tx4.file.write(ask_write=False)
 			if await tx4.send():
 				tx4.file.write(ask_write=False)
 		else:
-			die(2,'Transaction could not be signed')
+			die(2, 'Transaction could not be signed')
 	else:
 		tx.file.write(
 			outdir                = asi.txauto_dir if cfg.autosign else None,

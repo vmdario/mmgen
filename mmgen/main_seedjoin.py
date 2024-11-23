@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, command-line Bitcoin cold storage solution
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -21,11 +21,11 @@ mmgen-seedjoin: Regenerate an MMGen deterministic wallet from seed shares
                 created by 'mmgen-seedsplit'
 """
 
-from .cfg import gc,Config
-from .util import msg,msg_r,die
+from .cfg import gc, Config
+from .util import msg, msg_r, die
 from .color import yellow
 from .seed import Seed
-from .seedsplit import SeedSplitIDString,MasterShareIdx,SeedShareMasterJoining
+from .seedsplit import SeedSplitIDString, MasterShareIdx, SeedShareMasterJoining
 from .wallet import Wallet
 
 opts_data = {
@@ -35,7 +35,7 @@ opts_data = {
 		'usage': '[options] share1 share2 [...shareN]',
 		'options': """
 -h, --help            Print this help message
---, --longhelp        Print help message for long options (common options)
+--, --longhelp        Print help message for long (global) options
 -d, --outdir=      d  Output file to directory 'd' instead of working dir
 -e, --echo-passphrase Echo passphrases and other user input to screen
 -i, --id-str=      s  ID String of split (required for master share join only)
@@ -79,21 +79,22 @@ FMT CODES:
 """
 	},
 	'code': {
-		'options': lambda cfg,s: s.format(
-			ms_min=MasterShareIdx.min_val,
-			ms_max=MasterShareIdx.max_val,
-			cfg=cfg,
-			gc=gc,
+		'options': lambda cfg, s: s.format(
+			ms_min = MasterShareIdx.min_val,
+			ms_max = MasterShareIdx.max_val,
+			cfg    = cfg,
+			gc     = gc,
 		),
-		'notes': lambda cfg,help_notes,s: s.format(
-			f=help_notes('fmt_codes'),
-			n_pw=help_notes('passwd'),
+		'notes': lambda cfg, help_notes, s: s.format(
+			f      = help_notes('fmt_codes'),
+			n_pw   = help_notes('passwd'),
 		)
 	}
 }
 
 def print_shares_info():
-	si,out = 0,'\nComputed shares:\n'
+	si = 0
+	out = '\nComputed shares:\n'
 	if cfg.master_share:
 		fs = '{:3}: {}->{} ' + yellow('(master share #{}, split id ') + '{}' + yellow(', share count {})\n')
 		out += fs.format(
@@ -102,16 +103,16 @@ def print_shares_info():
 				share1.sid,
 				master_idx,
 				id_str.hl2(encl='‘’'),
-				len(shares) )
+				len(shares))
 		si = 1
-	for n,s in enumerate(shares[si:],si+1):
+	for n, s in enumerate(shares[si:], si+1):
 		out += f'{n:3}: {s.sid}\n'
 	cfg._util.qmsg(out)
 
 cfg = Config(opts_data=opts_data)
 
 if len(cfg._args) + bool(cfg.hidden_incog_input_params) < 2:
-	cfg._opts.usage()
+	cfg._usage()
 
 if cfg.master_share:
 	master_idx = MasterShareIdx(cfg.master_share)
@@ -135,7 +136,7 @@ shares = [Wallet(cfg).seed] if cfg.hidden_incog_input_params else []
 shares += [Wallet(cfg,fn).seed for fn in cfg._args]
 
 if cfg.master_share:
-	share1 = SeedShareMasterJoining( cfg, master_idx, shares[0], id_str, len(shares) ).derived_seed
+	share1 = SeedShareMasterJoining(cfg, master_idx, shares[0], id_str, len(shares)).derived_seed
 else:
 	share1 = shares[0]
 
@@ -143,7 +144,7 @@ print_shares_info()
 
 msg_r('Joining {n}-of-{n} XOR split...'.format(n=len(shares)))
 
-seed_out = Seed.join_shares( cfg, [share1] + shares[1:] )
+seed_out = Seed.join_shares(cfg, [share1] + shares[1:])
 
 msg(f'OK\nJoined Seed ID: {seed_out.sid.hl()}')
 

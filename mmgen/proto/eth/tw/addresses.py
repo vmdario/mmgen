@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# mmgen = Multi-Mode GENerator, a command-line cryptocurrency wallet
+# MMGen Wallet, a terminal-based cryptocurrency wallet
 # Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
@@ -16,15 +16,14 @@ from ....tw.addresses import TwAddresses
 from .view import EthereumTwView
 from .rpc import EthereumTwRPC
 
-class EthereumTwAddresses(TwAddresses,EthereumTwView,EthereumTwRPC):
+class EthereumTwAddresses(TwAddresses, EthereumTwView, EthereumTwRPC):
 
 	has_age = False
-	prompt_fs = """
-Sort options: [a]mt, [M]mgen addr, [r]everse
-Filters: show [E]mpty addrs, show all [L]abels
-View/Print: pager [v]iew, [w]ide pager view, [p]rint{s}
-Actions: [q]uit menu, r[e]draw, [D]elete addr, add [l]abel:
-"""
+	prompt_fs_in = [
+		'Sort options: [a]mt, [M]mgen addr, [r]everse',
+		'Filters: show [E]mpty addrs, show all [L]abels',
+		'View/Print: pager [v]iew, [w]ide pager view, [p]rint{s}',
+		'Actions: [q]uit menu, r[e]draw, [D]elete addr, add [l]abel:']
 	key_mappings = {
 		'a':'s_amt',
 		'M':'s_twmmid',
@@ -36,13 +35,13 @@ Actions: [q]uit menu, r[e]draw, [D]elete addr, add [l]abel:
 		'D':'i_addr_delete',
 		'v':'a_view',
 		'w':'a_view_detail',
-		'p':'a_print_detail' }
+		'p':'a_print_detail'}
 
-	def get_column_widths(self,data,wide,interactive):
+	def get_column_widths(self, data, wide, interactive):
 
 		return self.compute_column_widths(
 			widths = { # fixed cols
-				'num':  max(2,len(str(len(data)))+1),
+				'num':  max(2, len(str(len(data)))+1),
 				'mmid': max(len(d.twmmid.disp) for d in data),
 				'used': 0,
 				'amt':  self.amt_widths['amt'],
