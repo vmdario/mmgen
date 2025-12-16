@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -69,7 +69,7 @@ class PrivKey(bytes, InitErrors, MMGenObject):
 	wif        = ImmutableAttr(WifKey, typeconv=False)
 
 	# initialize with (priv_bin, compressed), WIF or self
-	def __new__(cls, proto, s=None, compressed=None, wif=None, pubkey_type=None):
+	def __new__(cls, proto, s=None, *, compressed=None, wif=None, pubkey_type=None):
 		if isinstance(s, cls):
 			return s
 		if wif:
@@ -103,7 +103,7 @@ class PrivKey(bytes, InitErrors, MMGenObject):
 					assert type(compressed) is bool, (
 						f"'compressed' must be of type bool, not {type(compressed).__name__}")
 					me = bytes.__new__(cls, proto.preprocess_key(s, pubkey_type))
-					me.wif = WifKey(proto, proto.encode_wif(me, pubkey_type, compressed))
+					me.wif = WifKey(proto, proto.encode_wif(me, pubkey_type, compressed=compressed))
 					me.compressed = compressed
 				me.pubkey_type = pubkey_type
 				me.orig_bytes = s # save the non-preprocessed key

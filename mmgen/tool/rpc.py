@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -50,25 +50,27 @@ class tool_cmd(tool_cmd_base):
 			r = await rpc_init(self.cfg, self.proto, ignore_daemon_version=True, ignore_wallet=True)
 		return f'{d.coind_name} version {r.daemon_version} ({r.daemon_version_str})'
 
-	async def getbalance(self,
+	async def getbalance(self, *,
 			minconf: 'minimum number of confirmations' = 1,
 			quiet:   'produce quieter output' = False,
 			pager:   'send output to pager' = False):
 		"list confirmed/unconfirmed, spendable/unspendable balances in tracking wallet"
 		from ..tw.bal import TwGetBalance
-		return (await TwGetBalance(self.cfg, self.proto, minconf, quiet)).format(color=self.cfg.color)
+		return (await TwGetBalance(
+			self.cfg, self.proto, minconf=minconf, quiet=quiet)).format(color=self.cfg.color)
 
 	async def twops(self,
 			obj, pager, reverse, detail, sort, age_fmt, interactive,
 			**kwargs):
 
 		obj.reverse = reverse
+		obj.sort_key = sort or obj.sort_key
 		obj.age_fmt = age_fmt
 
 		for k, v in kwargs.items():
 			setattr(obj, k, v)
 
-		await obj.get_data(sort_key=sort, reverse_sort=reverse)
+		await obj.get_data()
 
 		if interactive:
 			await obj.view_filter_and_sort()
@@ -81,7 +83,7 @@ class tool_cmd(tool_cmd_base):
 
 		return ret
 
-	async def twview(self,
+	async def twview(self, *,
 			pager:       'send output to pager' = False,
 			reverse:     'reverse order of unspent outputs' = False,
 			wide:        'display data in wide tabular format' = False,
@@ -98,7 +100,7 @@ class tool_cmd(tool_cmd_base):
 			obj, pager, reverse, wide, sort, age_fmt, interactive,
 			show_mmid = show_mmid)
 
-	async def txhist(self,
+	async def txhist(self, *,
 			pager:       'send output to pager' = False,
 			reverse:     'reverse order of transactions' = False,
 			detail:      'produce detailed, non-tabular output' = False,
@@ -114,6 +116,7 @@ class tool_cmd(tool_cmd_base):
 
 	async def listaddress(self,
 			mmgen_addr: str,
+			*,
 			wide:         'display data in wide tabular format' = False,
 			minconf:      'minimum number of confirmations' = 1,
 			showcoinaddr: 'display coin address in addition to MMGen ID' = True,
@@ -127,7 +130,7 @@ class tool_cmd(tool_cmd_base):
 			showcoinaddrs = showcoinaddr,
 			age_fmt       = age_fmt)
 
-	async def listaddresses(self,
+	async def listaddresses(self, *,
 			pager:        'send output to pager' = False,
 			reverse:      'reverse order of unspent outputs' = False,
 			wide:         'display data in wide tabular format' = False,
@@ -138,7 +141,7 @@ class tool_cmd(tool_cmd_base):
 			mmgen_addrs:  'hyphenated range or comma-separated list of addresses' = '',
 			showcoinaddrs:'display coin addresses in addition to MMGen IDs' = True,
 			showempty:    'show addresses with no balances' = True,
-			showused:     'show used addresses (tristate: 0=no, 1=yes, 2=all)' = 1,
+			showused:     'show used addresses (tristate: 0=no, 1=yes, 2=only)' = 1,
 			all_labels:   'show all addresses with labels' = False):
 		"list MMGen addresses in the tracking wallet and their balances"
 
@@ -155,13 +158,14 @@ class tool_cmd(tool_cmd_base):
 
 	async def add_label(self, mmgen_or_coin_addr: str, label: str):
 		"add descriptive label for address in tracking wallet"
+		from ..obj import TwComment
 		from ..tw.ctl import TwCtl
-		return await (await TwCtl(self.cfg, self.proto, mode='w')).set_comment(mmgen_or_coin_addr, label)
+		ret = await (await TwCtl(self.cfg, self.proto, mode='w')).set_comment(mmgen_or_coin_addr, label)
+		return True if isinstance(ret, TwComment) else False
 
 	async def remove_label(self, mmgen_or_coin_addr: str):
 		"remove descriptive label for address in tracking wallet"
-		await self.add_label(mmgen_or_coin_addr, '')
-		return True
+		return await self.add_label(mmgen_or_coin_addr, '')
 
 	async def remove_address(self, mmgen_or_coin_addr: str):
 		"remove an address from tracking wallet"
@@ -188,7 +192,7 @@ class tool_cmd(tool_cmd_base):
 		from ..tw.ctl import TwCtl
 		return await (await TwCtl(self.cfg, self.proto, mode='w')).rescan_address(mmgen_or_coin_addr)
 
-	async def rescan_blockchain(self,
+	async def rescan_blockchain(self, *,
 			start_block: int = None,
 			stop_block: int  = None):
 		"""
@@ -204,7 +208,12 @@ class tool_cmd(tool_cmd_base):
 		await (await TwCtl(self.cfg, self.proto, mode='w')).rescan_blockchain(start_block, stop_block)
 		return True
 
-	async def twexport(self, include_amts=True, pretty=False, prune=False, warn_used=False, force=False):
+	async def twexport(self, *,
+			include_amts = True,
+			pretty       = False,
+			prune        = False,
+			warn_used    = False,
+			force        = False):
 		"""
 		export a tracking wallet to JSON format
 
@@ -237,7 +246,7 @@ class tool_cmd(tool_cmd_base):
 			force_overwrite = force)
 		return True
 
-	async def twimport(self, filename: str, ignore_checksum=False, batch=False):
+	async def twimport(self, filename: str, *, ignore_checksum=False, batch=False):
 		"""
 		restore a tracking wallet from a JSON dump created by ‘twexport’
 

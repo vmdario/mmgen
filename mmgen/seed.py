@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,7 +28,7 @@ class SeedID(HiliteStr, InitErrors):
 	color = 'blue'
 	width = 8
 	trunc_ok = False
-	def __new__(cls, seed=None, sid=None):
+	def __new__(cls, *, seed=None, sid=None):
 		if isinstance(sid, cls):
 			return sid
 		try:
@@ -54,7 +54,7 @@ class SeedBase(MMGenObject):
 	data = ImmutableAttr(bytes, typeconv=False)
 	sid  = ImmutableAttr(SeedID, typeconv=False)
 
-	def __init__(self, cfg, seed_bin=None, nSubseeds=None):
+	def __init__(self, cfg, *, seed_bin=None, nSubseeds=None):
 
 		if not seed_bin:
 			from .crypto import Crypto

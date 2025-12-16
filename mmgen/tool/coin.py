@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -58,18 +58,22 @@ class tool_cmd(tool_cmd_base):
 			pubkey_type = self.mmtype.pubkey_type,
 			compressed  = self.mmtype.compressed).wif
 
-	def randpair(self):
-		"generate a random private key/address pair"
+	def privhex2pair(self, privhex: 'sstr'):
+		"generate a wifkey/address pair from the provided hexadecimal key"
 		gd = self._init_generators()
-		from ..crypto import Crypto
 		privkey = PrivKey(
 			self.proto,
-			Crypto(self.cfg).get_random(32),
+			bytes.fromhex(privhex),
 			pubkey_type = self.mmtype.pubkey_type,
 			compressed  = self.mmtype.compressed)
 		return (
 			privkey.wif,
 			gd.ag.to_addr(gd.kg.gen_data(privkey)))
+
+	def randpair(self):
+		"generate a random wifkey/address pair"
+		from ..crypto import Crypto
+		return self.privhex2pair(Crypto(self.cfg).get_random(32).hex())
 
 	def wif2hex(self, wifkey: 'sstr'):
 		"convert a private key from WIF to hexadecimal format"
@@ -113,7 +117,7 @@ class tool_cmd(tool_cmd_base):
 			gd.ag.to_segwit_redeem_script(data),
 			gd.ag.to_addr(data))
 
-	def _privhex2out(self, privhex: 'sstr', output_pubhex=False):
+	def _privhex2out(self, privhex: 'sstr', *, output_pubhex=False):
 		gd = self._init_generators()
 		pk = PrivKey(
 			self.proto,
@@ -161,12 +165,15 @@ class tool_cmd(tool_cmd_base):
 	def pubhash2addr(self, pubhashhex: 'sstr'):
 		"convert public key hash to address"
 		pubhash = bytes.fromhex(pubhashhex)
-		if self.mmtype.name == 'segwit':
-			return self.proto.pubhash2segwitaddr(pubhash)
-		elif self.mmtype.name == 'bech32':
-			return self.proto.pubhash2bech32addr(pubhash)
-		else:
-			return self.proto.pubhash2addr(pubhash, self.mmtype.addr_fmt)
+		match self.mmtype.name:
+			case 'segwit':
+				return self.proto.pubhash2segwitaddr(pubhash)
+			case 'bech32':
+				return self.proto.pubhash2bech32addr(pubhash)
+			case 'bech32x':
+				return self.proto.encode_addr_bech32x(pubhash)
+			case _:
+				return self.proto.pubhash2addr(pubhash, self.mmtype.addr_fmt)
 
 	def addr2pubhash(self, addr: 'sstr'):
 		"convert coin address to public key hash"
@@ -184,8 +191,8 @@ class tool_cmd(tool_cmd_base):
 
 	def scriptpubkey2addr(self, hexstr: 'sstr'):
 		"convert scriptPubKey to coin address"
-		from ..proto.btc.tx.base import scriptPubKey2addr
-		return scriptPubKey2addr(self.proto, hexstr)[0]
+		from ..proto.btc.tx.base import decodeScriptPubKey
+		return decodeScriptPubKey(self.proto, hexstr).addr
 
 	def eth_checksummed_addr(self, addr: 'sstr'):
 		"create a checksummed Ethereum address"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -16,7 +16,6 @@ bip_hd: BIP-44/49/84, SLIP-44 hierarchical-deterministic key derivation library
 #   https://blog.unit410.com/bitcoin/bip32/bip39/kdf/2021/05/17/inconsistent-bip32-derivations.html
 
 import hmac
-from collections import namedtuple
 
 from ..cfg import Config
 from ..util import is_int, fmt
@@ -129,16 +128,17 @@ def get_bip_by_addr_type(addr_type):
 		44)
 
 def check_privkey(key_int):
-	if key_int == 0:
-		raise ValueError('private key is zero!')
-	elif key_int >= secp256k1_order:
-		raise ValueError(f'{key_int:x}: private key >= group order!')
+	match key_int:
+		case 0:
+			raise ValueError('private key is zero!')
+		case n if n >= secp256k1_order:
+			raise ValueError(f'{n:x}: private key >= group order!')
 
 class BipHDConfig(Lockable):
 
-	supported_coins = ('btc', 'eth', 'doge', 'ltc', 'bch')
+	supported_coins = ('btc', 'eth', 'doge', 'ltc', 'bch', 'rune')
 
-	def __init__(self, base_cfg, coin, network, addr_type, from_path, no_path_checks):
+	def __init__(self, base_cfg, coin, *, network, addr_type, from_path, no_path_checks):
 
 		if not coin.lower() in self.supported_coins:
 			raise ValueError(f'bip_hd: coin {coin.upper()} not supported')
@@ -148,8 +148,7 @@ class BipHDConfig(Lockable):
 			'coin':    coin,
 			'network': network,
 			'type':    addr_type or None,
-			'quiet':   True
-		})
+			'quiet':   True})
 
 		dfl_type = base_cfg._proto.dfl_mmtype
 		addr_type = MMGenAddrType(
@@ -183,11 +182,24 @@ class MasterNode(Lockable):
 
 		check_privkey(int.from_bytes(self.key, byteorder='big'))
 
-	def init_cfg(self, coin=None, network=None, addr_type=None, from_path=False, no_path_checks=False):
+	def init_cfg(
+			self,
+			coin           = None,
+			*,
+			network        = None,
+			addr_type      = None,
+			from_path      = False,
+			no_path_checks = False):
 
 		new = BipHDNodeMaster()
 
-		new.cfg       = BipHDConfig(self.base_cfg, coin, network, addr_type, from_path, no_path_checks)
+		new.cfg = BipHDConfig(
+			self.base_cfg,
+			coin,
+			network = network,
+			addr_type = addr_type,
+			from_path = from_path,
+			no_path_checks = no_path_checks)
 		new.par_print = self.par_print
 		new.depth     = self.depth
 		new.key       = self.key
@@ -199,11 +211,11 @@ class MasterNode(Lockable):
 		new._lock()
 		return new
 
-	def to_coin_type(self, coin=None, network=None, addr_type=None):
-		return self.init_cfg(coin, network, addr_type).to_coin_type()
+	def to_coin_type(self, *, coin=None, network=None, addr_type=None):
+		return self.init_cfg(coin, network=network, addr_type=addr_type).to_coin_type()
 
-	def to_chain(self, idx, coin=None, network=None, addr_type=None, hardened=False, public=False):
-		return self.init_cfg(coin, network, addr_type).to_chain(
+	def to_chain(self, idx, *, coin=None, network=None, addr_type=None, hardened=False, public=False):
+		return self.init_cfg(coin, network=network, addr_type=addr_type).to_chain(
 			idx      = idx,
 			hardened = hardened,
 			public   = public)
@@ -225,7 +237,7 @@ class BipHDNode(Lockable):
 					'None' if getattr(cls, name) is None else f'None or {getattr(cls, name)}')
 			)
 
-	def set_params(self, cfg, idx, hardened):
+	def set_params(self, cfg, idx, *, hardened):
 		self.check_param('idx', idx)
 		self.check_param('hardened', hardened)
 		return (
@@ -289,7 +301,7 @@ class BipHDNode(Lockable):
 	def xprv(self):
 		return self.key_extended(public=False, as_str=True)
 
-	def key_extended(self, public, as_str=False):
+	def key_extended(self, public, *, as_str=False):
 		if self.public and not public:
 			raise ValueError('cannot create extended private key for public node!')
 		ret = b58chk_encode(
@@ -311,7 +323,7 @@ class BipHDNode(Lockable):
 	def derive_private(self, idx=None, hardened=None):
 		return self.derive(idx=idx, hardened=hardened, public=False)
 
-	def derive(self, idx, hardened, public):
+	def derive(self, idx, *, hardened, public):
 
 		if self.public and not public:
 			raise ValueError('cannot derive private node from public node!')
@@ -329,7 +341,7 @@ class BipHDNode(Lockable):
 			if new.public and type(new).hardened:
 				raise ValueError(
 					f'‘public’ requested, but node of depth {new.depth} ({new.desc}) must be hardened!')
-			new.idx, new.hardened = new.set_params(new.cfg, idx, hardened)
+			new.idx, new.hardened = new.set_params(new.cfg, idx, hardened=hardened)
 
 		key_in = b'\x00' + self.key if new.hardened else self.pubkey_bytes
 
@@ -358,6 +370,7 @@ class BipHDNode(Lockable):
 			base_cfg,
 			seed,
 			path_str,
+			*,
 			coin           = None,
 			addr_type      = None,
 			no_path_checks = False):
@@ -385,14 +398,14 @@ class BipHDNode(Lockable):
 			if not is_int(idx):
 				raise ValueError(f'invalid path component {s!r}')
 
-			res = res.derive(int(idx), hardened, public=False)
+			res = res.derive(int(idx), hardened=hardened, public=False)
 
 		return res
 
 	@staticmethod
 	# ‘addr_type’ is required for broken coins with duplicate version bytes across BIP protocols
 	# (i.e. Dogecoin)
-	def from_extended_key(base_cfg, coin, xkey_b58, addr_type=None):
+	def from_extended_key(base_cfg, coin, xkey_b58, *, addr_type=None):
 		xk = Bip32ExtendedKey(xkey_b58)
 
 		if xk.public:
@@ -403,18 +416,17 @@ class BipHDNode(Lockable):
 		addr_types = {
 			84: 'bech32',
 			49: 'segwit',
-			44: None
-		}
+			44: None}
 
 		new = bip_hd_nodes[xk.depth]()
 
 		new.cfg = BipHDConfig(
 			base_cfg,
 			coin,
-			xk.network,
-			addr_type or addr_types[xk.bip_proto],
-			False,
-			False)
+			network = xk.network,
+			addr_type = addr_type or addr_types[xk.bip_proto],
+			from_path = False,
+			no_path_checks = False)
 
 		new.par_print  = xk.par_print
 		new.depth      = xk.depth
@@ -436,7 +448,7 @@ class BipHDNodeMaster(BipHDNode):
 		#           purpose          coin_type
 		return self.derive_private().derive_private()
 
-	def to_chain(self, idx, hardened=False, public=False):
+	def to_chain(self, idx, *, hardened=False, public=False):
 		#           purpose          coin_type        account #0            chain
 		return self.derive_private().derive_private().derive_private(idx=0).derive(
 			idx      = idx,
@@ -447,7 +459,7 @@ class BipHDNodePurpose(BipHDNode):
 	desc = 'Purpose'
 	hardened = True
 
-	def set_params(self, cfg, idx, hardened):
+	def set_params(self, cfg, idx, *, hardened):
 		self.check_param('hardened', hardened)
 		if idx not in (None, cfg.bip_proto):
 			raise ValueError(
@@ -459,7 +471,7 @@ class BipHDNodeCoinType(BipHDNode):
 	desc = 'Coin Type'
 	hardened = True
 
-	def set_params(self, cfg, idx, hardened):
+	def set_params(self, cfg, idx, *, hardened):
 		self.check_param('hardened', hardened)
 		chain_idx = get_chain_params(
 			bipnum = get_bip_by_addr_type(cfg.addr_type),
@@ -470,7 +482,7 @@ class BipHDNodeCoinType(BipHDNode):
 				f'chain index {chain_idx} for coin {cfg.base_cfg.coin!r}')
 		return (chain_idx, type(self).hardened)
 
-	def to_chain(self, idx, hardened=False, public=False):
+	def to_chain(self, idx, *, hardened=False, public=False):
 		#           account #0            chain
 		return self.derive_private(idx=0).derive(
 			idx      = idx,
@@ -485,7 +497,7 @@ class BipHDNodeChain(BipHDNode):
 	desc = 'Chain'
 	hardened = False
 
-	def set_params(self, cfg, idx, hardened):
+	def set_params(self, cfg, idx, *, hardened):
 		self.check_param('hardened', hardened)
 		if idx not in (0, 1):
 			raise ValueError(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,15 +31,13 @@ class tool_cmd_base(MMGenObject):
 	need_addrtype = False
 	need_amt = False
 
-	def __init__(self, cfg, cmdname=None, proto=None, mmtype=None):
+	def __init__(self, cfg, *, cmdname=None, proto=None, mmtype=None):
 
 		self.cfg = cfg
 
 		if self.need_proto:
 			from ..protocol import init_proto_from_cfg
 			self.proto = proto or cfg._proto or init_proto_from_cfg(cfg, need_amt=True)
-			if cfg.token:
-				self.proto.tokensym = cfg.token.upper()
 
 		if self.need_addrtype:
 			from ..addr import MMGenAddrType
@@ -49,4 +47,4 @@ class tool_cmd_base(MMGenObject):
 
 	@property
 	def user_commands(self):
-		return {k:v for k, v in type(self).__dict__.items() if callable(v) and not k.startswith('_')}
+		return {k: v for k, v in type(self).__dict__.items() if callable(v) and not k.startswith('_')}

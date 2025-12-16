@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,10 +26,10 @@ from ..obj import NonNegativeInt
 
 class TwGetBalance(MMGenObject, metaclass=AsyncInit):
 
-	def __new__(cls, cfg, proto, *args, **kwargs):
+	def __new__(cls, cfg, proto, *, minconf, quiet):
 		return MMGenObject.__new__(proto.base_proto_subclass(cls, 'tw.bal'))
 
-	async def __init__(self, cfg, proto, minconf, quiet):
+	async def __init__(self, cfg, proto, *, minconf, quiet):
 
 		class BalanceInfo(dict):
 			def __init__(self):
@@ -38,15 +38,14 @@ class TwGetBalance(MMGenObject, metaclass=AsyncInit):
 					'unconfirmed': amt0,
 					'lt_minconf': amt0,
 					'ge_minconf': amt0,
-					'spendable': amt0,
-				}
+					'spendable': amt0}
 				dict.__init__(self, **data)
 
 		self.minconf = NonNegativeInt(minconf)
 		self.balance_info = BalanceInfo
 		self.quiet = quiet
 		self.proto = proto
-		self.data = {k:self.balance_info() for k in self.start_labels}
+		self.data = {k: self.balance_info() for k in self.start_labels}
 
 		if minconf < 2 and 'lt_minconf' in self.conf_cols:
 			del self.conf_cols['lt_minconf']
@@ -65,7 +64,7 @@ class TwGetBalance(MMGenObject, metaclass=AsyncInit):
 					return len(str(int(max(v[colname] for v in self.data.values())))) + iwidth_adj
 
 				def make_col(label, col):
-					return self.data[label][col].fmt(iwidth=iwidths[col], color=color)
+					return self.data[label][col].fmt(iwidths[col], color=color)
 
 				if color:
 					from ..color import green, yellow

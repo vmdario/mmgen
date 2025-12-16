@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,10 +24,22 @@ import os, json
 
 from ..util import ymsg, make_chksum_6, die
 from ..obj import MMGenObject, HexStr, MMGenTxID, CoinTxID, MMGenTxComment
-from ..rpc import json_encoder
+
+def get_monero_proto(tx, data):
+	from ..protocol import init_proto
+	return init_proto(tx.cfg, 'XMR', network=data['MoneroMMGenTX']['data']['network'])
+
+class txdata_json_encoder(json.JSONEncoder):
+	def default(self, o):
+		if type(o).__name__.endswith('Amt'):
+			return str(o)
+		elif type(o).__name__ == 'OpReturnData':
+			return repr(o)
+		else:
+			return json.JSONEncoder.default(self, o)
 
 def json_dumps(data):
-	return json.dumps(data, separators = (',', ':'), cls=json_encoder)
+	return json.dumps(data, separators = (',', ':'), cls=txdata_json_encoder)
 
 def get_proto_from_coin_id(tx, coin_id, chain):
 	coin, tokensym = coin_id.split(':') if ':' in coin_id else (coin_id, None)
@@ -35,14 +47,9 @@ def get_proto_from_coin_id(tx, coin_id, chain):
 	from ..protocol import CoinProtocol, init_proto
 	network = CoinProtocol.Base.chain_name_to_network(tx.cfg, coin, chain)
 
-	proto = init_proto(tx.cfg, coin, network=network, need_amt=True)
+	return init_proto(tx.cfg, coin, network=network, need_amt=True, tokensym=tokensym)
 
-	if tokensym:
-		proto.tokensym = tokensym
-
-	return proto
-
-def eval_io_data(tx, data, desc):
+def eval_io_data(tx, data, *, desc):
 	if not (desc == 'outputs' and tx.proto.base_coin == 'ETH'): # ETH txs can have no outputs
 		assert len(data), f'no {desc}!'
 	for d in data:
@@ -61,24 +68,23 @@ class MMGenTxFile(MMGenObject):
 		'send_amt': 'skip',
 		'timestamp': None,
 		'blockcount': None,
-		'serialized': None,
-	}
+		'serialized': None}
 	extra_attrs = {
 		'locktime': None,
 		'comment': MMGenTxComment,
 		'coin_txid': CoinTxID,
 		'sent_timestamp': None,
-	}
+		'is_swap': None}
 
 	def __init__(self, tx):
 		self.tx       = tx
 		self.fmt_data = None
 		self.filename = None
 
-	def parse(self, infile, metadata_only=False, quiet_open=False):
+	def parse(self, infile, *, metadata_only=False, quiet_open=False):
 		tx = self.tx
 		from ..fileutil import get_data_from_file
-		data = get_data_from_file(tx.cfg, infile, f'{tx.desc} data', quiet=quiet_open)
+		data = get_data_from_file(tx.cfg, infile, desc=f'{tx.desc} data', quiet=quiet_open)
 		if len(data) > tx.cfg.max_tx_file_size:
 			die('MaxFileSizeExceeded',
 				f'Transaction file size exceeds limit ({tx.cfg.max_tx_file_size} bytes)')
@@ -88,6 +94,9 @@ class MMGenTxFile(MMGenObject):
 		tx = self.tx
 		tx.file_format = 'json'
 		outer_data = json.loads(data)
+		if 'MoneroMMGenTX' in outer_data:
+			tx.proto = get_monero_proto(tx, outer_data)
+			return None
 		data = outer_data[self.data_label]
 		if outer_data['chksum'] != make_chksum_6(json_dumps(data)):
 			chk = make_chksum_6(json_dumps(data))
@@ -106,8 +115,13 @@ class MMGenTxFile(MMGenObject):
 			if k in data:
 				setattr(tx, k, v(data[k]) if v else data[k])
 
+		if tx.is_swap:
+			for k, v in tx.swap_attrs.items():
+				if k in data:
+					setattr(tx, k, v(data[k]) if v else data[k])
+
 		for k in ('inputs', 'outputs'):
-			setattr(tx, k, eval_io_data(tx, data[k], k))
+			setattr(tx, k, eval_io_data(tx, data[k], desc=k))
 
 		tx.check_txfile_hex_data()
 
@@ -119,7 +133,7 @@ class MMGenTxFile(MMGenObject):
 		tx = self.tx
 		tx.file_format = 'legacy'
 
-		def deserialize(raw_data, desc):
+		def deserialize(raw_data, *, desc):
 			from ast import literal_eval
 			try:
 				return literal_eval(raw_data)
@@ -194,12 +208,12 @@ class MMGenTxFile(MMGenObject):
 			tx.parse_txfile_serialized_data()
 			for k in ('inputs', 'outputs'):
 				desc = f'{k} data'
-				res = deserialize(io_data[k], k)
+				res = deserialize(io_data[k], desc=k)
 				for d in res:
 					if 'label' in d:
 						d['comment'] = d['label']
 						del d['label']
-				setattr(tx, k, eval_io_data(tx, res, k))
+				setattr(tx, k, eval_io_data(tx, res, desc=k))
 			desc = 'send amount in metadata'
 			assert tx.proto.coin_amt(send_amt) == tx.send_amt, f'{send_amt} != {tx.send_amt}'
 		except Exception as e:
@@ -267,10 +281,13 @@ class MMGenTxFile(MMGenObject):
 					k: getattr(tx, k) for k in self.attrs
 				} | {
 					'inputs':  [e._asdict() for e in tx.inputs],
-					'outputs': [e._asdict() for e in tx.outputs]
+					'outputs': [{k: v for k,v in e._asdict().items()
+						if not (type(v) is bool and v is False)} for e in tx.outputs]
 				} | {
 					k: getattr(tx, k) for k in self.extra_attrs if getattr(tx, k)
-				})
+				} | ({
+					k: getattr(tx, k) for k in tx.swap_attrs if getattr(tx, k, None)
+				} if tx.is_swap else {}))
 			return '{{"{}":{},"chksum":"{}"}}'.format(self.data_label, data, make_chksum_6(data))
 
 		fmt_data = {'json': format_data_json, 'legacy': format_data_legacy}[tx.file_format]()
@@ -280,7 +297,7 @@ class MMGenTxFile(MMGenObject):
 
 		return fmt_data
 
-	def write(self,
+	def write(self, *,
 		add_desc              = '',
 		outdir                = None,
 		ask_write             = True,
@@ -310,7 +327,7 @@ class MMGenTxFile(MMGenObject):
 			ignore_opt_outdir     = outdir)
 
 	@classmethod
-	def get_proto(cls, cfg, filename, quiet_open=False):
+	def get_proto(cls, cfg, filename, *, quiet_open=False):
 		from . import BaseTX
 		tmp_tx = BaseTX(cfg=cfg)
 		cls(tmp_tx).parse(filename, metadata_only=True, quiet_open=quiet_open)

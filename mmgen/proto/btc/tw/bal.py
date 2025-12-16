@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -18,17 +18,16 @@ from ....rpc import rpc_init
 
 class BitcoinTwGetBalance(TwGetBalance):
 
-	async def __init__(self, cfg, proto, minconf, quiet):
+	async def __init__(self, cfg, proto, *, minconf, quiet):
 		self.rpc = await rpc_init(cfg, proto)
 		self.walletinfo = await self.rpc.walletinfo
-		await super().__init__(cfg, proto, minconf, quiet)
+		await super().__init__(cfg, proto, minconf=minconf, quiet=quiet)
 
 	start_labels = ('TOTAL', 'Non-MMGen', 'Non-wallet')
 	conf_cols = {
 		'unconfirmed': 'Unconfirmed',
 		'lt_minconf':  '<{minconf} confs',
-		'ge_minconf':  '>={minconf} confs',
-	}
+		'ge_minconf':  '>={minconf} confs'}
 
 	async def create_data(self):
 		lbl_id = ('account', 'label')['label_api' in self.rpc.caps]

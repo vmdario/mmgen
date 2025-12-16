@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -12,31 +12,55 @@
 help: help notes functions for MMGen suite commands
 """
 
-from ..cfg import gc
-
 class help_notes:
 
 	def __init__(self, proto, cfg):
 		self.proto = proto
 		self.cfg = cfg
 
-	def fee_spec_letters(self, use_quotes=False):
-		cu = self.proto.coin_amt.units
-		sep, conj = ((',', ' or '), ("','", "' or '"))[use_quotes]
-		return sep.join(u[0] for u in cu[:-1]) + ('', conj)[len(cu)>1] + cu[-1][0]
+	def txcreate_args(self):
+		match self.proto.base_proto:
+			case 'Bitcoin':
+				return '[ADDR,AMT ... | DATA_SPEC] ADDR [addr file ...]'
+			case 'Monero':
+				return 'ADDR,AMT'
+			case _:
+				return 'ADDR,AMT [addr file ...]'
 
-	def fee_spec_names(self):
-		cu = self.proto.coin_amt.units
-		return ', '.join(cu[:-1]) + ('', ' and ')[len(cu)>1] + cu[-1] + ('', ',\nrespectively')[len(cu)>1]
+	def swaptxcreate_args(self):
+		return 'COIN1 [AMT CHG_ADDR] COIN2 [ADDR]'
 
-	def coind_exec(self):
-		from ..daemon import CoinDaemon
+	def account_info_desc(self):
+		return 'unspent outputs' if self.proto.base_proto == 'Bitcoin' else 'account info'
+
+	def fee_spec_letters(self, *, use_quotes=False, proto=None):
+		cu = (proto or self.proto).coin_amt.units
+		pfx, sfx, sep, conj = (('', '', ',', ' or '), ("‘", "’", "’,‘", "’ or ‘"))[use_quotes]
+		return pfx + sep.join(u[0] for u in cu[:-1]) + ('', conj)[len(cu)>1] + cu[-1][0] + sfx
+
+	def stream_interval(self):
+		from ..tx.new_swap import get_swap_proto_mod
+		return get_swap_proto_mod(self.cfg.swap_proto).SwapCfg(self.cfg).si.dfl
+
+	def fee_spec_names(self, *, proto=None, linebreak=' '):
+		cu = (proto or self.proto).coin_amt.units
 		return (
-			CoinDaemon(self.cfg, self.proto.coin).exec_fn if self.proto.coin in CoinDaemon.coins else 'bitcoind')
+			', '.join(cu[:-1])
+			+ ('', ' and ')[len(cu)>1]
+			+ cu[-1]
+			+ (f',{linebreak}respectively' if len(cu) > 1 else ''))
 
 	def dfl_twname(self):
-		from ..proto.btc.rpc import BitcoinRPCClient
+		from ..proto.btc.rpc.local import BitcoinRPCClient
 		return BitcoinRPCClient.dfl_twname
+
+	def tw_dir(self):
+		from ..tw.ctl import TwCtl
+		twctl_cls = self.proto.base_proto_subclass(TwCtl, 'tw.ctl')
+		if hasattr(twctl_cls, 'get_tw_dir'):
+			return twctl_cls.get_tw_dir(self.cfg, self.proto)
+		else:
+			raise ValueError(f'protocol {self.proto.name} does not support tracking wallet with store')
 
 	def MasterShareIdx(self):
 		from ..seedsplit import MasterShareIdx
@@ -69,14 +93,20 @@ class help_notes:
 
 	def address_types(self):
 		from ..addr import MMGenAddrType
-		return '\n  '.join([
-			"'{}','{:<12} - {}".format(k, v.name + "'", v.desc)
-				for k, v in MMGenAddrType.mmtypes.items()
-		])
+		return """
+ADDRESS TYPES:
+
+  Code Type           Description
+  ---- ----           -----------
+  """ + format('\n  '.join(['‘{}’  {:<12} - {}'.format(k, v.name, v.desc)
+				for k, v in MMGenAddrType.mmtypes.items()]))
 
 	def fmt_codes(self):
 		from ..wallet import format_fmt_codes
-		return '\n  '.join(format_fmt_codes().splitlines())
+		return """
+FMT CODES:
+
+  """ + '\n  '.join(format_fmt_codes().splitlines())
 
 	def coin_id(self):
 		return self.proto.coin_id
@@ -95,23 +125,61 @@ class help_notes:
 		from ..util import fmt_list
 		return fmt_list(CoinDaemon.get_network_ids(self.cfg), fmt='bare')
 
-	def rel_fee_desc(self):
-		from ..tx import BaseTX
-		return BaseTX(cfg=self.cfg, proto=self.proto).rel_fee_desc
+	def tx_proxies(self):
+		from ..util import fmt_list
+		return fmt_list(self.cfg._autoset_opts['tx_proxy'].choices, fmt='fancy')
 
-	def fee(self):
-		from ..tx import BaseTX
+	def rel_fee_desc(self):
+		if self.proto.has_usr_fee:
+			from ..tx import BaseTX
+			return BaseTX(cfg=self.cfg, proto=self.proto).rel_fee_desc
+		else:
+			return ''
+
+	def gas_limit(self, target):
 		return """
+                                 GAS LIMIT
+
+This option specifies the maximum gas allowance for an Ethereum transaction.
+It’s generally of interest only for token transactions or swap transactions
+from token assets.
+
+Parameter must be an integer or one of the special values ‘fallback’ (for a
+locally computed sane default) or ‘auto’ (for gas estimate via an RPC call,
+in the case of a token transaction, or locally computed default, in the case
+of a standard transaction). The default is ‘auto’.
+
+		""" if target == 'swaptx' or self.proto.base_coin == 'ETH' else ''
+
+	def fee(self, all_coins=False):
+
+		if not self.proto.has_usr_fee:
+			return ''
+
+		from ..tx import BaseTX
+		text = """
                                FEE SPECIFICATION
 
 Transaction fees, both on the command line and at the interactive prompt, may
-be specified as either absolute {c} amounts, using a plain decimal number, or
-as {r}, using an integer followed by '{l}', for {u}.
-""".format(
-	c = self.proto.coin,
-	r = BaseTX(cfg=self.cfg, proto=self.proto).rel_fee_desc,
-	l = self.fee_spec_letters(use_quotes=True),
-	u = self.fee_spec_names() )
+be specified as either absolute coin amounts, using a plain decimal number, or
+as {r}, using an integer followed by {l}, for{s}{u}""".format(
+			r = BaseTX(cfg=self.cfg, proto=self.proto).rel_fee_desc,
+			l = self.fee_spec_letters(use_quotes=True),
+			s = '\n' if self.proto.base_coin == 'ETH' else ' ',
+			u = self.fee_spec_names())
+
+		if all_coins:
+			from ..protocol import init_proto
+			eth_proto = init_proto(self.cfg, 'eth', need_amt=True)
+			return text + (
+				' (for\nBitcoin, Litecoin and Bitcoin Cash)'
+				+ ", or {r}, using an integer followed\nby {l}, for {u}".format(
+					r = BaseTX(cfg=self.cfg, proto=eth_proto).rel_fee_desc,
+					l = self.fee_spec_letters(use_quotes=True, proto=eth_proto),
+					u = self.fee_spec_names(proto=eth_proto, linebreak='\n'))
+				+ ' (for Ethereum)\n\n')
+		else:
+			return text + '.\n\n'
 
 	def passwd(self):
 		return """
@@ -129,140 +197,4 @@ BRAINWALLET NOTE:
 To thwart dictionary attacks, it’s recommended to use a strong hash preset
 with brainwallets.  For a brainwallet passphrase to generate the correct
 seed, the same seed length and hash preset parameters must always be used.
-""".strip()
-
-	def txcreate_examples(self):
-
-		mmtype = 'B' if 'B' in self.proto.mmtypes else self.proto.mmtypes[0]
-		from ..tool.coin import tool_cmd
-		t = tool_cmd(self.cfg, mmtype=mmtype)
-		addr = t.privhex2addr('bead' * 16)
-		sample_addr = addr.views[addr.view_pref]
-
-		return f"""
-EXAMPLES:
-
-  Send 0.123 {self.proto.coin} to an external {self.proto.name} address, returning the change to a
-  specific MMGen address in the tracking wallet:
-
-    $ {gc.prog_name} {sample_addr},0.123 01ABCDEF:{mmtype}:7
-
-  Same as above, but select the change address automatically:
-
-    $ {gc.prog_name} {sample_addr},0.123 01ABCDEF:{mmtype}
-
-  Same as above, but select the change address automatically by address type:
-
-    $ {gc.prog_name} {sample_addr},0.123 {mmtype}
-
-  Same as above, but reduce verbosity and specify fee of 20 satoshis
-  per byte:
-
-    $ {gc.prog_name} -q -f 20s {sample_addr},0.123 {mmtype}
-
-  Send entire balance of selected inputs minus fee to an external {self.proto.name}
-  address:
-
-    $ {gc.prog_name} {sample_addr}
-
-  Send entire balance of selected inputs minus fee to first unused wallet
-  address of specified type:
-
-    $ {gc.prog_name} {mmtype}
-"""
-
-	def txcreate(self):
-		return f"""
-The transaction’s outputs are listed on the command line, while its inputs
-are chosen from a list of the wallet’s unspent outputs via an interactive
-menu.  Alternatively, inputs may be specified using the --inputs option.
-
-All addresses on the command line can be either {self.proto.name} addresses or MMGen
-IDs in the form <seed ID>:<address type letter>:<index>.
-
-Outputs are specified in the form <address>,<amount>, with the change output
-specified by address only.  Alternatively, the change output may be an
-addrlist ID in the form <seed ID>:<address type letter>, in which case the
-first unused address in the tracking wallet matching the requested ID will
-be automatically selected as the change output.
-
-If the transaction fee is not specified on the command line (see FEE
-SPECIFICATION below), it will be calculated dynamically using network fee
-estimation for the default (or user-specified) number of confirmations.
-If network fee estimation fails, the user will be prompted for a fee.
-
-Network-estimated fees will be multiplied by the value of --fee-adjust, if
-specified.
-
-To send the value of all inputs (minus TX fee) to a single output, specify
-a single address with no amount on the command line.  Alternatively, an
-addrlist ID may be specified, and the address will be chosen automatically
-as described above for the change output.
-"""
-
-	def txsign(self):
-		from ..proto.btc.params import mainnet
-		return """
-Transactions may contain both {pnm} or non-{pnm} input addresses.
-
-To sign non-{pnm} inputs, a {wd}flat key list is used
-as the key source (--keys-from-file option).
-
-To sign {pnm} inputs, key data is generated from a seed as with the
-{pnl}-addrgen and {pnl}-keygen commands.  Alternatively, a key-address file
-may be used (--mmgen-keys-from-file option).
-
-Multiple wallets or other seed files can be listed on the command line in
-any order.  If the seeds required to sign the transaction’s inputs are not
-found in these files (or in the default wallet), the user will be prompted
-for seed data interactively.
-
-To prevent an attacker from crafting transactions with bogus {pnm}-to-{pnu}
-address mappings, all outputs to {pnm} addresses are verified with a seed
-source.  Therefore, seed files or a key-address file for all {pnm} outputs
-must also be supplied on the command line if the data can’t be found in the
-default wallet.
-""".format(
-	wd  = f'{self.coind_exec()} wallet dump or ' if isinstance(self.proto, mainnet) else '',
-	pnm = gc.proj_name,
-	pnu = self.proto.name,
-	pnl = gc.proj_name.lower())
-
-	def subwallet(self):
-		from ..subseed import SubSeedIdxRange
-		return f"""
-SUBWALLETS:
-
-Subwallets (subseeds) are specified by a ‘Subseed Index’ consisting of:
-
-  a) an integer in the range 1-{SubSeedIdxRange.max_idx}, plus
-  b) an optional single letter, ‘L’ or ‘S’
-
-The letter designates the length of the subseed.  If omitted, ‘L’ is assumed.
-
-Long (‘L’) subseeds are the same length as their parent wallet’s seed
-(typically 256 bits), while short (‘S’) subseeds are always 128-bit.
-The long and short subseeds for a given index are derived independently,
-so both may be used.
-
-MMGen Wallet has no notion of ‘depth’, and to an outside observer subwallets
-are identical to ordinary wallets.  This is a feature rather than a bug, as
-it denies an attacker any way of knowing whether a given wallet has a parent.
-
-Since subwallets are just wallets, they may be used to generate other
-subwallets, leading to hierarchies of arbitrary depth.  However, this is
-inadvisable in practice for two reasons:  Firstly, it creates accounting
-complexity, requiring the user to independently keep track of a derivation
-tree.  More importantly, however, it leads to the danger of Seed ID
-collisions between subseeds at different levels of the hierarchy, as
-MMGen checks and avoids ID collisions only among sibling subseeds.
-
-An exception to this caveat would be a multi-user setup where sibling
-subwallets are distributed to different users as their default wallets.
-Since the subseeds derived from these subwallets are private to each user,
-Seed ID collisions among them doesn’t present a problem.
-
-A safe rule of thumb, therefore, is for *each user* to derive all of his/her
-subwallets from a single parent.  This leaves each user with a total of two
-million subwallets, which should be enough for most practical purposes.
 """.strip()

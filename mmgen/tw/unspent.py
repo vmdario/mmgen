@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,25 +26,20 @@ from ..obj import (
 	ListItemAttr,
 	MMGenListItem,
 	TwComment,
-	HexStr,
 	CoinTxID,
 	NonNegativeInt)
 from ..addr import CoinAddr
 from ..amt import CoinAmtChk
-from .shared import TwMMGenID, get_tw_label
+from .shared import TwMMGenID, TwLabel, get_tw_label
 from .view import TwView
 
 class TwUnspentOutputs(TwView):
 
-	class display_type(TwView.display_type):
-
-		class squeezed(TwView.display_type.squeezed):
-			cols = ('num', 'txid', 'vout', 'addr', 'mmid', 'comment', 'amt', 'amt2', 'date')
-
-		class detail(TwView.display_type.detail):
-			cols = ('num', 'txid', 'vout', 'addr', 'mmid', 'amt', 'amt2', 'block', 'date_time', 'comment')
-
 	show_mmid = True
+	hdr_lbl = 'tracked addresses'
+	desc    = 'address balances'
+	item_desc = 'address'
+	item_desc_pl = 'addresses'
 	no_rpcdata_errmsg = """
 		No spendable outputs found!  Import addresses with balances into your
 		watch-only wallet using 'mmgen-addrimport' and then re-run this program.
@@ -52,27 +47,57 @@ class TwUnspentOutputs(TwView):
 	update_widths_on_age_toggle = False
 	print_output_types = ('detail',)
 	mod_subpath = 'tw.unspent'
+	dump_fn_pfx = 'balances'
+	prompt_fs_in = [
+		'Sort options: [a]mount, a[d]dr, [M]mgen addr, [r]everse',
+		'Display options: show [m]mgen addr, r[e]draw screen',
+		'View/Print: pager [v]iew, [w]ide pager view, [p]rint to file{s}',
+		'Actions: [q]uit menu, [D]elete addr, add [l]abel, [R]efresh balance:']
+	key_mappings = {
+		'a':'s_amt',
+		'd':'s_addr',
+		'r':'s_reverse',
+		'M':'s_twmmid',
+		'm':'d_mmid',
+		'e':'d_redraw',
+		'p':'a_print_detail',
+		'v':'a_view',
+		'w':'a_view_detail',
+		'l':'i_comment_add'}
+	extra_key_mappings = {
+		'D':'i_addr_delete',
+		'R':'i_balance_refresh'}
+	disp_spc = 3
+	vout_w = 0
+
+	class display_type(TwView.display_type):
+
+		class squeezed(TwView.display_type.squeezed):
+			cols = ('num', 'addr', 'mmid', 'comment', 'amt', 'amt2')
+
+		class detail(TwView.display_type.detail):
+			cols = ('num', 'addr', 'mmid', 'amt', 'amt2', 'comment')
 
 	class MMGenTwUnspentOutput(MMGenListItem):
-		txid         = ListItemAttr(CoinTxID)
-		vout         = ListItemAttr(NonNegativeInt)
-		amt          = ImmutableAttr(CoinAmtChk, include_proto=True)
-		amt2         = ListItemAttr(CoinAmtChk, include_proto=True) # the ETH balance for token account
-		comment      = ListItemAttr(TwComment, reassign_ok=True)
-		twmmid       = ImmutableAttr(TwMMGenID, include_proto=True)
-		addr         = ImmutableAttr(CoinAddr, include_proto=True)
-		confs        = ImmutableAttr(int, typeconv=False)
-		date         = ListItemAttr(int, typeconv=False, reassign_ok=True)
-		scriptPubKey = ImmutableAttr(HexStr)
-		skip         = ListItemAttr(str, typeconv=False, reassign_ok=True)
+		valid_attrs = {'txid', 'vout', 'amt', 'amt2', 'comment', 'twmmid', 'addr', 'confs', 'skip'}
+		invalid_attrs = {'proto'}
+		txid    = ListItemAttr(CoinTxID)
+		vout    = ListItemAttr(NonNegativeInt)
+		amt     = ImmutableAttr(CoinAmtChk, include_proto=True)
+		amt2    = ListItemAttr(CoinAmtChk, include_proto=True) # the ETH balance for token account
+		comment = ListItemAttr(TwComment, reassign_ok=True)
+		twmmid  = ImmutableAttr(TwMMGenID, include_proto=True)
+		addr    = ImmutableAttr(CoinAddr, include_proto=True)
+		confs   = ImmutableAttr(int, typeconv=False)
+		skip    = ListItemAttr(str, typeconv=False, reassign_ok=True)
 
 		def __init__(self, proto, **kwargs):
 			self.__dict__['proto'] = proto
 			MMGenListItem.__init__(self, **kwargs)
 
-	async def __init__(self, cfg, proto, minconf=1, addrs=[]):
+	async def __init__(self, cfg, proto, *, minconf=1, addrs=[]):
 		await super().__init__(cfg, proto)
-		self.minconf  = minconf
+		self.minconf  = NonNegativeInt(minconf)
 		self.addrs    = addrs
 		from ..cfg import gc
 		self.min_cols = gc.min_screen_width
@@ -93,59 +118,64 @@ class TwUnspentOutputs(TwView):
 					'twmmid':  l.mmid,
 					'comment': l.comment or '',
 					'addr':    CoinAddr(self.proto, o['address']),
-					'confs':   o['confirmations']
-				})
+					'confs':   o['confirmations'],
+					'skip':    ''})
 				yield self.MMGenTwUnspentOutput(
 					self.proto,
-					**{k:v for k, v in o.items() if k in self.MMGenTwUnspentOutput.valid_attrs})
+					**{k: v for k, v in o.items() if k in self.MMGenTwUnspentOutput.valid_attrs})
 
-	def filter_data(self):
+	async def get_rpc_data(self):
+		wl = self.twctl.sorted_list
+		minconf = int(self.minconf)
+		block = self.twctl.rpc.get_block_from_minconf(minconf)
+		if self.addrs:
+			wl = [d for d in wl if d['addr'] in self.addrs]
+		return [{
+				'account': TwLabel(self.proto, d['mmid']+' '+d['comment']),
+				'address': d['addr'],
+				'amt': await self.twctl.get_balance(d['addr'], block=block),
+				'confirmations': minconf,
+				} for d in wl]
 
-		data = self.data.copy()
+	def get_disp_data(self):
 
-		for d in data:
+		for d in self.data:
 			d.skip = ''
 
-		gkeys = {'addr': 'addr', 'twmmid': 'addr', 'txid': 'txid'}
-		if self.group and self.sort_key in gkeys:
-			for a, b in [(data[i], data[i+1]) for i in range(len(data)-1)]:
-				for k in gkeys:
-					if self.sort_key == k and getattr(a, k) == getattr(b, k):
-						b.skip = gkeys[k]
+		if self.group and (e := self.sort_key) in self.groupable:
+			data = self.data
+			skip = self.groupable[e]
+			for i in range(len(data) - 1):
+				if getattr(data[i], e) == getattr(data[i + 1], e):
+					data[i + 1].skip = skip
 
-		return data
+		return self.data
 
-	def get_column_widths(self, data, wide, interactive):
-
+	def get_column_widths(self, data, *, wide):
 		show_mmid = self.show_mmid or wide
-
-		# num txid vout addr [mmid] [comment] amt [amt2] date
-		return self.compute_column_widths(
+		return self.column_widths_data(
 			widths = { # fixed cols
 				'num': max(2, len(str(len(data)))+1),
-				'vout': 4,
+				'txid': 0,
+				'vout': self.vout_w,
 				'mmid': max(len(d.twmmid.disp) for d in data) if show_mmid else 0,
 				'amt': self.amt_widths['amt'],
 				'amt2': self.amt_widths.get('amt2', 0),
 				'block': self.age_col_params['block'][0] if wide else 0,
 				'date_time': self.age_col_params['date_time'][0] if wide else 0,
 				'date': self.age_w,
-				'spc': 7 if show_mmid else 5, # 7(5) spaces in fs
-			},
+				'spc': self.disp_spc + (2 * show_mmid) + self.has_amt2},
 			maxws = { # expandable cols
-				'txid': self.txid_w,
 				'addr': max(len(d.addr) for d in data),
 				'comment': max(d.comment.screen_width for d in data) if show_mmid else 0,
-			},
+			} | self.txid_max_w,
 			minws = {
-				'txid': 7,
 				'addr': 10,
 				'comment': len('Comment') if show_mmid else 0,
-			},
-			maxws_nice = {'txid':12, 'addr':16} if show_mmid else {'txid':12},
-			wide = wide,
-			interactive = interactive,
-		)
+			} | self.txid_min_w,
+			maxws_nice = (
+				self.nice_addr_w if show_mmid else {}
+			) | self.txid_nice_w)
 
 	def squeezed_col_hdr(self, cw, fs, color):
 		return fs.format(
@@ -177,46 +207,48 @@ class TwUnspentOutputs(TwView):
 		for n, d in enumerate(data):
 			yield fs.format(
 				n = str(n+1) + ')',
-				t = (d.txid.fmtc('|' + '.'*(cw.txid-1), width=cw.txid, color=color) if d.skip  == 'txid'
-					else d.txid.truncate(width=cw.txid, color=color)) if cw.txid else None,
-				v = ' ' + d.vout.fmt(width=cw.vout-1, color=color) if cw.vout else None,
-				a = d.addr.fmtc('|' + '.'*(cw.addr-1), width=cw.addr, color=color) if d.skip == 'addr'
-					else d.addr.fmt(self.addr_view_pref, width=cw.addr, color=color),
-				m = (d.twmmid.fmtc('.'*cw.mmid, width=cw.mmid, color=color) if d.skip == 'addr'
-					else d.twmmid.fmt(width=cw.mmid, color=color)) if cw.mmid else None,
-				c = d.comment.fmt2(width=cw.comment, color=color, nullrepl='-') if cw.comment else None,
-				A = d.amt.fmt(color=color, iwidth=cw.iwidth, prec=self.disp_prec),
-				B = d.amt2.fmt(color=color, iwidth=cw.iwidth2, prec=self.disp_prec) if cw.amt2 else None,
-				d = self.age_disp(d, self.age_fmt),
-			)
+				t = (d.txid.fmtc('|' + '.'*(cw.txid-1), cw.txid, color=color) if d.skip  == 'txid'
+					else d.txid.truncate(cw.txid, color=color)) if cw.txid else None,
+				v = ' ' + d.vout.fmt(cw.vout-1, color=color) if cw.vout else None,
+				a = d.addr.fmtc('|' + '.'*(cw.addr-1), cw.addr, color=color) if d.skip == 'addr'
+					else d.addr.fmt(self.addr_view_pref, cw.addr, color=color),
+				m = (d.twmmid.fmtc('.'*cw.mmid, cw.mmid, color=color) if d.skip == 'addr'
+					else d.twmmid.fmt(cw.mmid, color=color)) if cw.mmid else None,
+				c = d.comment.fmt2(cw.comment, color=color, nullrepl='-') if cw.comment else None,
+				A = d.amt.fmt(cw.iwidth, color=color, prec=self.disp_prec),
+				B = d.amt2.fmt(cw.iwidth2, color=color, prec=self.disp_prec) if cw.amt2 else None,
+				d = self.age_disp(d, self.age_fmt))
 
 	def gen_detail_display(self, data, cw, fs, color, fmt_method):
 
 		for n, d in enumerate(data):
 			yield fs.format(
 				n = str(n+1) + ')',
-				t = d.txid.fmt(width=cw.txid, color=color) if cw.txid else None,
-				v = ' ' + d.vout.fmt(width=cw.vout-1, color=color) if cw.vout else None,
-				a = d.addr.fmt(self.addr_view_pref, width=cw.addr, color=color),
-				m = d.twmmid.fmt(width=cw.mmid, color=color),
-				A = d.amt.fmt(color=color, iwidth=cw.iwidth, prec=self.disp_prec),
-				B = d.amt2.fmt(color=color, iwidth=cw.iwidth2, prec=self.disp_prec) if cw.amt2 else None,
+				t = d.txid.fmt(cw.txid, color=color) if cw.txid else None,
+				v = ' ' + d.vout.fmt(cw.vout-1, color=color) if cw.vout else None,
+				a = d.addr.fmt(self.addr_view_pref, cw.addr, color=color),
+				m = d.twmmid.fmt(cw.mmid, color=color),
+				A = d.amt.fmt(cw.iwidth, color=color, prec=self.disp_prec),
+				B = d.amt2.fmt(cw.iwidth2, color=color, prec=self.disp_prec) if cw.amt2 else None,
 				b = self.age_disp(d, 'block'),
 				D = self.age_disp(d, 'date_time'),
-				c = d.comment.fmt2(width=cw.comment, color=color, nullrepl='-'))
+				c = d.comment.fmt2(cw.comment, color=color, nullrepl='-'))
 
 	def display_total(self):
-		msg('\nTotal unspent: {} {} ({} output{})'.format(
+		msg('\nTotal unspent: {} {} ({} {}{})'.format(
 			self.total.hl(),
 			self.proto.dcoin,
 			len(self.data),
+			self.item_desc,
 			suf(self.data)))
 
 	async def set_dates(self, us):
 		if not self.dates_set:
 			# 'blocktime' differs from 'time', is same as getblockheader['time']
 			dates = [o.get('blocktime', 0)
-				for o in await self.rpc.gathered_icall('gettransaction', [(o.txid, True, False) for o in us])]
+				for o in await self.rpc.gathered_icall(
+					'gettransaction',
+					[(o.txid, True, False) for o in us])]
 			for idx, o in enumerate(us):
 				o.date = dates[idx]
 			self.dates_set = True
@@ -224,7 +256,7 @@ class TwUnspentOutputs(TwView):
 	class sort_action(TwView.sort_action):
 
 		def s_twmmid(self, parent):
-			parent.do_sort('twmmid')
+			parent.sort_data('twmmid')
 			parent.show_mmid = True
 
 	class display_action(TwView.display_action):
@@ -233,5 +265,5 @@ class TwUnspentOutputs(TwView):
 			parent.show_mmid = not parent.show_mmid
 
 		def d_group(self, parent):
-			if parent.can_group:
+			if parent.groupable:
 				parent.group = not parent.group

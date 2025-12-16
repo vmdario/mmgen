@@ -1,9 +1,9 @@
 # MMGen Wallet
 
-##### An online/offline cryptocurrency wallet for the command line
+##### A terminal-based online/offline cryptocurrency wallet
 
 ![build](https://github.com/mmgen/mmgen-wallet/workflows/build/badge.svg)
-![pylint](https://github.com/mmgen/mmgen-wallet/workflows/pylint/badge.svg)
+![ruff](https://github.com/mmgen/mmgen-wallet/workflows/ruff/badge.svg)
 
 ### Description
 
@@ -23,10 +23,10 @@ network-connected device.**
 MMGen Wallet is designed for reliability by having the reference Bitcoin or
 altcoin daemon, rather than less-tested third-party software, do all the “heavy
 lifting” of tracking and signing transactions.  It’s also designed with privacy
-in mind: unlike some other online/offline wallets, MMGen Wallet is a completely
+in mind: unlike most cryptocurrency wallets, MMGen Wallet is a completely
 self-contained system that makes **no connections to the Internet** apart from
-the coin network itself: no information about which addresses you’re tracking is
-ever leaked to the outside world.
+the coin network itself (RUNE transacting excepted): no information about which
+addresses you’re tracking is ever leaked to the outside world.
 
 Like all deterministic wallets, MMGen Wallet can generate a virtually unlimited
 number of address/key pairs from a single seed.  Your wallet never changes, so
@@ -69,10 +69,11 @@ that widespread standard.
 
 #### A brief overview of MMGen Wallet’s unique feature set:
 
-- **[Full transaction and address tracking support][T]** for Bitcoin, [Bcash][bx],
-  [Litecoin][bx], [Ethereum][E], Ethereum Classic and [ERC20 tokens][E].
-- **Monero transacting and wallet management** via the interactive
+- **[Transaction support][T]** for BTC, [BCH][bx], [LTC][bx], [ETH][E],
+  [ETC][E], [ERC20 tokens][E] and [RUNE][rx].
+- **[Monero][bm]** transacting and wallet management via the interactive
   [`mmgen-xmrwallet`][xm] command.
+- **[Native asset swaps via THORChain][tc]** (21 assets currently supported).
 - **[Address generation support][ag]** for the above coins, plus [Zcash][zx]
   (t and z addresses) and [144 Bitcoin-derived altcoins][ax].
 - **Support for all Bitcoin address types** including Segwit-P2SH and Bech32.
@@ -134,41 +135,15 @@ that widespread standard.
 - **Scriptability:** Most of MMGen Wallet’s commands can be made
   non-interactive, allowing you to automate repetitive tasks using shell
   scripts.
-- The project also includes the [`mmgen-tool`][L] utility, a handy “pocket
-  knife” for cryptocurrency developers, along with an easy-to-use [**tool API
-  interface**][ta] providing access to a subset of its commands from within
-  Python.
+- The project also includes the [`mmgen-tool`][L] utility, a handy “Swiss
+  Army knife” for cryptocurrency developers, and [`mmgen-cli`][cl], for
+  easy communication with the RPC interfaces of all supported coin daemons.
 
 #### Supported platforms:
 
 Linux, macOS, Windows/MSYS2
 
-### Download/Install
-
-> #### [Install on Microsoft Windows][1]
-
-> #### [Install on Linux or macOS][2]
-
-
-### Using MMGen Wallet
-
-> #### [Getting Started with MMGen Wallet][3]
-
-> #### [MMGen Wallet Quick Start with Regtest Mode][Q]
-
-> #### [MMGen Wallet command help][6]
-
-> #### [Recovering your keys without the MMGen Wallet software][K]
-
-> #### [Altcoin and Forkcoin support (ETH,ETC,XMR,ZEC,LTC,BCH and 144 Bitcoin-derived alts)][F]
-
-> #### [Subwallets][U]
-
-> #### [XOR Seed Splitting][O]
-
-> #### [Test Suite][ts]
-
-> #### [Tool API][ta]
+### [Download / Install / Use][D]
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -176,36 +151,36 @@ Homepage:
 [Clearnet](https://mmgen-wallet.cc) |
 [I2P](http://mmgen-wallet.i2p) |
 [Onion](http://mmgen55rtcahqfp2hn3v7syqv2wqanks5oeezqg3ykwfkebmouzjxlad.onion)    
-Code repository:
+Code Repository:
 [Clearnet](https://mmgen.org/project/mmgen/mmgen-wallet) |
 [I2P](http://mmgen-wallet.i2p/project/mmgen/mmgen-wallet) |
 [Onion](http://mmgen55rtcahqfp2hn3v7syqv2wqanks5oeezqg3ykwfkebmouzjxlad.onion/project/mmgen/mmgen-wallet)    
-Code repository mirrors:
+Code Repository Mirrors:
 [Github](https://github.com/mmgen/mmgen-wallet) |
 [Gitlab](https://gitlab.com/mmgen/mmgen-wallet) |
-[Gitflic](https://gitflic.ru/project/mmgen/mmgen-wallet)     
-[Keybase](https://keybase.io/mmgen) |
+[Codeberg](https://codeberg.org/mmgen/mmgen-wallet)     
+IRC:
+**#mmgen-wallet** ([OFTC](https://oftc.net) | postman.i2p) &nbsp; | &nbsp;
+E-Mail:
+[Tuta](mailto:mmgen@tuta.io) |
+[Proton](mailto:mmgen-wallet@proton.me)  
+Accounts:
 [Twitter](https://twitter.com/TheMMGenProject) |
+[Bitcointalk](https://bitcointalk.org/index.php?topic=567069.new#new) |
+[Dread](http://dreadytofatroptsdj6io7l3xptbet6onoyno2yv7jicoxknyazubrad.onion/u/MMGen) |
 [Reddit](https://www.reddit.com/user/mmgen-py) |
-[Bitcointalk](https://bitcointalk.org/index.php?topic=567069.new#new)   
-[PGP Signing Key][5]: 5C84 CB45 AEE2 250F 31A6 A570 3F8B 1861 E32B 7DA2    
+[Keybase](https://keybase.io/mmgen)  
+PGP Signing Key: [5C84 CB45 AEE2 250F 31A6 A570 3F8B 1861 E32B 7DA2][5]    
 Donate:    
 &nbsp;⊙&nbsp;BTC:&nbsp;*bc1qxmymxf8p5ckvlxkmkwgw8ap5t2xuaffmrpexap*    
 &nbsp;⊙&nbsp;BCH:&nbsp;*15TLdmi5NYLdqmtCqczUs5pBPkJDXRs83w*    
 &nbsp;⊙&nbsp;XMR:&nbsp;*8B14zb8wgLuKDdse5p8f3aKpFqRdB4i4xj83b7BHYABHMvHifWxiDXeKRELnaxL5FySfeRRS5girgUvgy8fQKsYMEzPUJ8h*
 
-[1]:  ../../wiki/Install-MMGen-Wallet-on-Microsoft-Windows
-[2]:  ../../wiki/Install-MMGen-Wallet-on-Linux-or-macOS
-[3]:  ../../wiki/Getting-Started-with-MMGen-Wallet
+[D]:  ../../wiki
 [5]:  ../../wiki/MMGen-Signing-Keys
-[6]:  ../../wiki/MMGen-command-help
-[7]:  http://bitcoinmagazine.com/8396/deterministic-wallets-advantages-flaw/
-[8]:  https://github.com/mmgen/MMGenLive
 [9]:  https://mmgen.org/images/rxvt-txcreate.jpg
-[Q]:  ../../wiki/MMGen-Wallet-Quick-Start-with-Regtest-Mode
 [K]:  ../../wiki/Recovering-Your-Keys-Without-the-MMGen-Wallet-Software
 [S]:  ../../wiki/Recovering-Your-Keys-Without-the-MMGen-Wallet-Software#a_mh
-[F]:  ../../wiki/Altcoin-and-Forkcoin-Support
 [W]:  https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
 [ew]: https://github.com/spesmilo/electrum/blob/1.9.5/lib/mnemonic.py
 [bw]: https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt
@@ -215,11 +190,14 @@ Donate:
 [xm]: ../../wiki/command-help-xmrwallet
 [G]:  ../../wiki/command-help-passgen
 [MS]: ../../wiki/command-help-msg
+[cl]: ../../wiki/command-help-cli
 [T]:  ../../wiki/Getting-Started-with-MMGen-Wallet#a_ct
 [E]:  ../../wiki/Altcoin-and-Forkcoin-Support#a_tx
 [ag]: ../../wiki/command-help-addrgen
 [bx]: ../../wiki/Altcoin-and-Forkcoin-Support#a_bch
-[mx]: ../../wiki/Altcoin-and-Forkcoin-Support#a_xmr
+[bm]: ../../wiki/Altcoin-and-Forkcoin-Support#a_xmr
+[rx]: ../../wiki/Altcoin-and-Forkcoin-Support#a_rune
+[tc]: ../../wiki/Altcoin-and-Forkcoin-Support#a_tcswap
 [zx]: ../../wiki/Altcoin-and-Forkcoin-Support#a_zec
 [ax]: ../../wiki/Altcoin-and-Forkcoin-Support#a_kg
 [M]:  ../../wiki/Getting-Started-with-MMGen-Wallet#a_fee
@@ -229,5 +207,4 @@ Donate:
 [O]:  ../../wiki/XOR-Seed-Splitting:-Theory-and-Practice
 [ms]: ../../wiki/command-help-seedsplit
 [ta]: ../../wiki/Tool-API
-[ts]: ../../wiki/Test-Suite
 [L]:  ../../wiki/command-help-tool

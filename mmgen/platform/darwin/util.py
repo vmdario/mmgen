@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -43,7 +43,7 @@ class MacOSRamDisk:
 	desc = 'ramdisk'
 	min_size = 10 # 10MB is the minimum supported by hdiutil
 
-	def __init__(self, cfg, label, size, path=None):
+	def __init__(self, cfg, label, size, *, path=None):
 		if size < self.min_size:
 			warn_ramdisk_too_small(size, self.min_size)
 			size = self.min_size
@@ -59,7 +59,7 @@ class MacOSRamDisk:
 	def get_diskutil_size(self):
 		return get_device_size(self.label) // (2**20)
 
-	def create(self, quiet=False):
+	def create(self, *, quiet=False):
 		redir = DEVNULL if quiet else None
 		if self.exists():
 			diskutil_size = self.get_diskutil_size()
@@ -70,8 +70,12 @@ class MacOSRamDisk:
 				self.cfg._util.qmsg(f'{self.desc.capitalize()} {self.label.hl()} at path {self.path} already exists')
 				return
 		self.cfg._util.qmsg(f'Creating {self.desc} {self.label.hl()} of size {self.size}MB')
-		cp = run(['hdiutil', 'attach', '-nomount', f'ram://{2048 * self.size}'], stdout=PIPE, check=True)
-		self.dev_name = cp.stdout.decode().strip()
+		cp = run(
+			['hdiutil', 'attach', '-nomount', f'ram://{2048 * self.size}'],
+			stdout = PIPE,
+			text = True,
+			check = True)
+		self.dev_name = cp.stdout.strip()
 		self.cfg._util.qmsg(f'Created {self.desc} {self.label.hl()} [{self.dev_name}]')
 		run(['diskutil', 'eraseVolume', 'APFS', self.label, self.dev_name], stdout=redir, check=True)
 		diskutil_size = self.get_diskutil_size()
@@ -81,7 +85,7 @@ class MacOSRamDisk:
 			self.path.mkdir(parents=True, exist_ok=True)
 			run(['diskutil', 'mount', '-mountPoint', str(self.path.absolute()), self.label], stdout=redir, check=True)
 
-	def destroy(self, quiet=False):
+	def destroy(self, *, quiet=False):
 		if not self.exists():
 			self.cfg._util.qmsg(f'{self.desc.capitalize()} {self.label.hl()} at path {self.path} not found')
 			return

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -46,9 +46,9 @@ class xmrseed(baseconv):
 		wstr = ''.join(word[:3] for word in words)
 		return words[crc32(wstr.encode()) % len(words)]
 
-	def tobytes(self, words_arg, pad=None):
+	def tobytes(self, words_arg, *, pad=None):
 
-		assert isinstance(words_arg, (list, tuple)), 'words must be list or tuple'
+		assert isinstance(words_arg, list | tuple), 'words must be list or tuple'
 		assert pad is None, f"{pad}: invalid 'pad' argument (must be None)"
 
 		words = words_arg
@@ -77,7 +77,7 @@ class xmrseed(baseconv):
 
 		return b''.join(gen())
 
-	def frombytes(self, bytestr, pad=None, tostr=False):
+	def frombytes(self, bytestr, *, pad=None, tostr=False):
 		assert pad is None, f"{pad}: invalid 'pad' argument (must be None)"
 
 		desc = self.desc.short

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -15,10 +15,14 @@ proto.btc.tx.completed: Bitcoin completed transaction class
 from ....tx import completed as TxBase
 from ....obj import HexStr
 from ....util import msg, die
-from .base import Base, scriptPubKey2addr
+from .base import Base, decodeScriptPubKey
 
 class Completed(Base, TxBase.Completed):
 	fn_fee_unit = 'satoshi'
+
+	def get_swap_memo_maybe(self):
+		if o := self.data_output:
+			return o.data
 
 	# check signature and witness data
 	def check_sigs(self): # return True if sigs found, False otherwise; raise exception on error
@@ -45,21 +49,17 @@ class Completed(Base, TxBase.Completed):
 
 	def check_pubkey_scripts(self):
 		for n, i in enumerate(self.inputs, 1):
-			addr, fmt = scriptPubKey2addr(self.proto, i.scriptPubKey)
-			if i.addr != addr:
-				if fmt != i.addr.addr_fmt:
+			ds = decodeScriptPubKey(self.proto, i.scriptPubKey)
+			if ds.addr != i.addr:
+				if ds.addr_fmt != i.addr.addr_fmt:
 					m = 'Address format of scriptPubKey ({}) does not match that of address ({}) in input #{}'
-					msg(m.format(fmt, i.addr.addr_fmt, n))
+					msg(m.format(ds.addr_fmt, i.addr.addr_fmt, n))
 				m = 'ERROR: Address and scriptPubKey of transaction input #{} do not match!'
 				die(3, (m+'\n  {:23}{}'*3).format(
 					n,
 					'address:',               i.addr,
 					'scriptPubKey:',          i.scriptPubKey,
-					'scriptPubKey->address:', addr))
-
-#	def is_replaceable_from_rpc(self):
-#		dec_tx = await self.rpc.call('decoderawtransaction', self.serialized)
-#		return None < dec_tx['vin'][0]['sequence'] <= self.proto.max_int - 2
+					'scriptPubKey->address:', ds.addr))
 
 	def is_replaceable(self):
 		return self.inputs[0].sequence == self.proto.max_int - 2
@@ -67,7 +67,7 @@ class Completed(Base, TxBase.Completed):
 	@property
 	def send_amt(self):
 		return self.sum_outputs(
-			exclude = None if len(self.outputs) == 1 else self.chg_idx
+			exclude = None if len(self.nondata_outputs) == 1 else self.chg_idx
 		)
 
 	def check_txfile_hex_data(self):

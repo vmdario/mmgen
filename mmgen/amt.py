@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@ amt: MMGen CoinAmt and related classes
 
 from decimal import Decimal
 from .objmethods import Hilite, InitErrors
+from .obj import get_obj
 
 class CoinAmt(Decimal, Hilite, InitErrors): # abstract class
 	"""
@@ -39,7 +40,7 @@ class CoinAmt(Decimal, Hilite, InitErrors): # abstract class
 	max_amt  = None   # coin supply if known, otherwise None
 	units    = ()     # defined unit names, e.g. ('satoshi',...)
 
-	def __new__(cls, num, from_unit=None, from_decimal=False):
+	def __new__(cls, num, *, from_unit=None, from_decimal=False):
 
 		if isinstance(num, CoinAmt):
 			raise TypeError(f'CoinAmt: {num} is instance of {cls.__name__}')
@@ -47,7 +48,7 @@ class CoinAmt(Decimal, Hilite, InitErrors): # abstract class
 		try:
 			if from_unit:
 				assert from_unit in cls.units, f'{from_unit!r}: unrecognized coin unit for {cls.__name__}'
-				assert type(num) is int, 'value is not an integer'
+				assert isinstance(num, int), 'value is not an integer'
 				me = Decimal.__new__(cls, num * getattr(cls, from_unit))
 			elif from_decimal:
 				assert isinstance(num, Decimal), f'number must be of type Decimal, not {type(num).__name__})'
@@ -64,38 +65,59 @@ class CoinAmt(Decimal, Hilite, InitErrors): # abstract class
 			return cls.init_fail(e, num)
 
 	def to_unit(self, unit):
-		return int(Decimal(self) // getattr(self, unit))
+		if (u := getattr(self, unit)) == self.atomic:
+			return int(Decimal(self) // u)
+		else:
+			return Decimal('{:0.{w}f}'.format(
+				self / u,
+				w = (u/self.atomic).as_tuple().exponent))
 
 	@classmethod
 	def fmtc(cls, *args, **kwargs):
 		cls.method_not_implemented()
 
-	def fmt(self, color=False, iwidth=1, prec=None): # iwidth: width of the integer part
-		prec = prec or self.max_prec
-		if '.' in (s := str(self)):
-			a, b = s.split('.', 1)
-			return self.colorize(
-				a.rjust(iwidth) + '.' + b.ljust(prec)[:prec], # truncation, not rounding!
-				color = color)
-		else:
-			return self.colorize(
-				s.rjust(iwidth).ljust(iwidth+prec+1),
-				color = color)
+	def fmt(self, iwidth=1, /, *, color=False, prec=None): # iwidth: width of the integer part
+		match str(self).split('.', 1):
+			case [a, b]:
+				return self.colorize(
+					# we truncate instead of rounding:
+					a.rjust(iwidth) + '.' + b.ljust(prec or self.max_prec)[:prec or self.max_prec],
+					color = color)
+			case [a]:
+				return self.colorize(
+					a.rjust(iwidth) + ' ' + ''.ljust(prec or self.max_prec),
+					color = color)
 
-	def hl(self, color=True):
+	# same as fmt(), only with color override:
+	def fmt2(self, iwidth=1, /, *, color=False, prec=None, color_override=''):
+		match str(self).split('.', 1):
+			case [a, b]:
+				return self.colorize2(
+					a.rjust(iwidth) + '.' + b.ljust(prec or self.max_prec)[:prec or self.max_prec],
+					color = color,
+					color_override = color_override)
+			case [a]:
+				return self.colorize2(
+					a.rjust(iwidth) + ' ' + ''.ljust(prec or self.max_prec),
+					color = color,
+					color_override = color_override)
+
+	def hl(self, *, color=True):
 		return self.colorize(str(self), color=color)
 
+	def hl2(self, *, color=True, color_override=''):
+		return self.colorize2(str(self), color=color, color_override=color_override)
+
 	# fancy highlighting with coin unit, enclosure, formatting
-	def hl2(self, color=True, unit=False, fs='{}', encl=''):
+	def hl3(self, *, color=True, unit=False, fs='{}', encl='', color_override=''):
 		res = fs.format(self)
-		return (
+		return self.colorize2(
 			encl[:-1]
-			+ self.colorize(
-				(res.rstrip('0').rstrip('.') if '.' in res else res) +
-				(' ' + self.coin if unit else ''),
-				color = color)
-			+ encl[1:]
-		)
+			+ (res.rstrip('0').rstrip('.') if '.' in res else res)
+			+ (' ' + self.coin if unit else '')
+			+ encl[1:],
+			color = color,
+			color_override = color_override)
 
 	def __str__(self): # format simply, with no exponential notation
 		return str(int(self)) if int(self) == self else self.normalize().__format__('f')
@@ -129,22 +151,19 @@ class CoinAmt(Decimal, Hilite, InitErrors): # abstract class
 	def __mul__(self, other, *args, **kwargs):
 		return type(self)('{:0.{p}f}'.format(
 			Decimal.__mul__(self, Decimal(other), *args, **kwargs),
-			p = self.max_prec
-		))
+			p = self.max_prec))
 
 	__rmul__ = __mul__
 
 	def __truediv__(self, other, *args, **kwargs):
 		return type(self)('{:0.{p}f}'.format(
 			Decimal.__truediv__(self, Decimal(other), *args, **kwargs),
-			p = self.max_prec
-		))
+			p = self.max_prec))
 
 	def __rtruediv__(self, other, *args, **kwargs):
 		return type(self)('{:0.{p}f}'.format(
 			Decimal.__rtruediv__(self, Decimal(other), *args, **kwargs),
-			p = self.max_prec
-		))
+			p = self.max_prec))
 
 	def __neg__(self, *args, **kwargs):
 		self.method_not_implemented()
@@ -155,12 +174,26 @@ class CoinAmt(Decimal, Hilite, InitErrors): # abstract class
 	def __mod__(self, *args, **kwargs):
 		self.method_not_implemented()
 
+def is_coin_amt(proto, num, *, from_unit=None, from_decimal=False):
+	assert proto.coin_amt, 'proto.coin_amt is None!  Did you call init_proto() with ‘need_amt’?'
+	return get_obj(
+		proto.coin_amt,
+		num          = num,
+		from_unit    = from_unit,
+		from_decimal = from_decimal,
+		silent       = True,
+		return_bool  = True)
+
 class BTCAmt(CoinAmt):
 	coin = 'BTC'
 	max_prec = 8
 	max_amt = 21000000
 	satoshi = Decimal('0.00000001')
+	atomic = satoshi
 	units = ('satoshi',)
+
+class UniAmt(BTCAmt):
+	coin = None
 
 class BCHAmt(BTCAmt):
 	coin = 'BCH'
@@ -185,6 +218,7 @@ class ETHAmt(CoinAmt):
 	Gwei    = Decimal('0.000000001')
 	szabo   = Decimal('0.000001')
 	finney  = Decimal('0.001')
+	atomic  = wei
 	units   = ('wei', 'Kwei', 'Mwei', 'Gwei', 'szabo', 'finney')
 
 	def toWei(self):
@@ -193,6 +227,25 @@ class ETHAmt(CoinAmt):
 class ETCAmt(ETHAmt):
 	coin = 'ETC'
 
+class TokenAmt(ETHAmt):
+	units = ('atomic',)
+
+	def __new__(cls, num, *, decimals, from_unit=None):
+		assert isinstance(decimals, int)
+		cls.max_prec = decimals
+		cls.atomic = Decimal(f'{10 ** -decimals:0.{decimals}f}')
+		return ETHAmt.__new__(cls, num=num, from_unit=from_unit)
+
+	def to_unit(self, unit):
+		if (u := getattr(self, unit)) == self.atomic:
+			return int(Decimal(self) // u)
+		raise ValueError('TokenAmt unit must be ‘atomic’')
+
 def CoinAmtChk(proto, num):
 	assert type(num) is proto.coin_amt, f'CoinAmtChk: {type(num)} != {proto.coin_amt}'
 	return num
+
+class RelFeeAmt(Decimal):
+
+	def __str__(self):
+		return '{:.08f}'.format(self).rstrip('0').rstrip('.')

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -27,8 +27,7 @@ class wallet(wallet):
   Make a record of the Incog ID but keep it secret.  You will use it to
   identify your incog wallet data in the future.
 	""",
-		'decrypt_params': " {} hash preset"
-	}
+		'decrypt_params': " {} hash preset"}
 
 	def _make_iv_chksum(self, s):
 		from hashlib import sha256
@@ -142,9 +141,9 @@ class wallet(wallet):
 			return False
 
 	def _verify_seed_oldfmt(self, seed):
-		m = f'Seed ID: {make_chksum_8(seed)}.  Is the Seed ID correct?'
+		prompt = f'Seed ID: {make_chksum_8(seed)}.  Is the Seed ID correct?'
 		from ..ui import keypress_confirm
-		if keypress_confirm(self.cfg, m, True):
+		if keypress_confirm(self.cfg, prompt, default_yes=True):
 			return seed
 		else:
 			return False
@@ -189,7 +188,7 @@ class wallet(wallet):
 				key_id   = ''))
 
 		if seed:
-			self.seed = Seed(self.cfg, seed)
+			self.seed = Seed(self.cfg, seed_bin=seed)
 			msg(f'Seed ID: {self.seed.sid}')
 			return True
 		else:

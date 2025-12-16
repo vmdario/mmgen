@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -189,8 +189,9 @@ if cfg.testing_status:
 		'tooltest2.py': run(
 			['python3', 'test/tooltest2.py', '--list-tested-cmds'],
 			stdout = PIPE,
+			text = True,
 			check = True
-		).stdout.decode().split()
+		).stdout.split()
 	}
 	for v in cmd_data.values():
 		tested_in['tooltest.py'] += list(v['cmd_data'].keys())
@@ -460,7 +461,7 @@ class MMGenToolTestCmds:
 		test_msg('command piping')
 		if cfg.verbose:
 			sys.stderr.write(green('Executing ') + cyan(cmd) + '\n')
-		res = run(cmd, stdout=PIPE, shell=True).stdout.decode().strip()
+		res = run(cmd, stdout=PIPE, shell=True, text=True).stdout.strip()
 		addr = read_from_tmpfile(tcfg, 'wif2addr3.out').strip()
 		cmp_or_die(addr, res)
 		ok()
@@ -514,26 +515,25 @@ def do_cmds(cmd_group):
 		getattr(tc, cmd)(*cmdline)
 
 def main():
-	if cfg._args:
-		if len(cfg._args) != 1:
+	match cfg._args:
+		case []:
+			cleandir(tcfg['tmpdir'], do_msg=True)
+			for cmd in cmd_data:
+				msg('Running tests for {}:'.format(cmd_data[cmd]['desc']))
+				do_cmds(cmd)
+				if cmd is not list(cmd_data.keys())[-1]:
+					msg('')
+		case [_, _]:
 			die(1, 'Only one command may be specified')
-		cmd = cfg._args[0]
-		if cmd in cmd_data:
+		case [cmd] if cmd in cmd_data:
 			cleandir(tcfg['tmpdir'], do_msg=True)
 			msg('Running tests for {}:'.format(cmd_data[cmd]['desc']))
 			do_cmds(cmd)
-		elif cmd == 'clean':
+		case ['clean']:
 			cleandir(tcfg['tmpdir'], do_msg=True)
 			sys.exit(0)
-		else:
+		case _:
 			die(1, f'{cmd!r}: unrecognized command')
-	else:
-		cleandir(tcfg['tmpdir'], do_msg=True)
-		for cmd in cmd_data:
-			msg('Running tests for {}:'.format(cmd_data[cmd]['desc']))
-			do_cmds(cmd)
-			if cmd is not list(cmd_data.keys())[-1]:
-				msg('')
 	end_msg(int(time.time()) - start_time)
 
 from mmgen.main import launch

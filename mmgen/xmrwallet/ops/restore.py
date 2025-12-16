@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -29,19 +29,23 @@ class OpRestore(OpCreate):
 	async def process_wallet(self, d, fn, last):
 
 		def get_dump_data():
+
 			def gen():
 				for fn in [self.get_wallet_fn(d, watch_only=wo) for wo in (True, False)]:
 					ret = fn.parent / (fn.name + '.dump')
 					if ret.exists():
 						yield ret
-			dump_fns = tuple(gen())
-			if not dump_fns:
-				die(1, f"No suitable dump file found for '{fn}'")
-			elif len(dump_fns) > 1:
-				ymsg(f"Warning: more than one dump file found for '{fn}' - using the first!")
+
+			match tuple(gen()):
+				case [dump_fn, *rest]:
+					if rest:
+						ymsg(f'Warning: more than one dump file found for ‘{fn}’ - using the first!')
+				case _:
+					die(1, f'No suitable dump file found for ‘{fn}’')
+
 			return MoneroWalletDumpFile.Completed(
 				parent = self,
-				fn     = dump_fns[0]).data._asdict()['wallet_metadata']
+				fn     = dump_fn).data._asdict()['wallet_metadata']
 
 		def restore_accounts():
 			bmsg('  Restoring accounts:')
@@ -64,15 +68,13 @@ class OpRestore(OpCreate):
 					msg(fs.format(acct_idx, addr_idx, addr_data['label']))
 					self.c.call(
 						'label_address',
-						index = { 'major': acct_idx, 'minor': addr_idx },
-						label = addr_data['label'],
-					)
+						index = {'major': acct_idx, 'minor': addr_idx},
+						label = addr_data['label'])
 
 		def make_format_str():
 			return '    acct {:O>%s}, addr {:O>%s} [{}]' % (
 				len(str(len(data) - 1)),
-				len(str(max(len(acct_data['addresses']) for acct_data in data) - 1))
-			)
+				len(str(max(len(acct_data['addresses']) for acct_data in data) - 1)))
 
 		def check_restored_data():
 			restored_data = h.get_wallet_data(print=False).addrs_data

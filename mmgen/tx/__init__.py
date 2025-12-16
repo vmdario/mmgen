@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -12,9 +12,8 @@
 tx.__init__: transaction class initializer
 """
 
-from ..objmethods import MMGenObject
-
-def _base_proto_subclass(clsname, modname, proto):
+def _base_proto_subclass(clsname, modname, kwargs):
+	proto = kwargs['proto']
 	if proto:
 		clsname = ('Token' if proto.tokensym else '') + clsname
 		modname = f'mmgen.proto.{proto.base_proto_coin.lower()}.tx.{modname}'
@@ -24,7 +23,9 @@ def _base_proto_subclass(clsname, modname, proto):
 	return getattr(importlib.import_module(modname), clsname)
 
 def _get_cls_info(clsname, modname, kwargs):
-
+	"""
+	determine cls/mod/proto and pass them to _base_proto_subclass() to get a TX instance
+	"""
 	if 'proto' in kwargs:
 		proto = kwargs['proto']
 	elif 'data' in kwargs:
@@ -38,15 +39,19 @@ def _get_cls_info(clsname, modname, kwargs):
 		raise ValueError(
 			f"{clsname} must be instantiated with 'proto', 'data' or 'filename' keyword")
 
-	if clsname == 'Completed':
-		from ..util import get_extension, die
-		from .completed import Completed
-		ext = get_extension(kwargs['filename'])
-		cls = Completed.ext_to_cls(ext, proto)
-		if not cls:
-			die(1, f'{ext!r}: unrecognized file extension for CompletedTX')
-		clsname = cls.__name__
-		modname = cls.__module__.rsplit('.', maxsplit=1)[-1]
+	match clsname:
+		case 'Completed':
+			from ..util import get_extension, die
+			from .completed import Completed
+			ext = get_extension(kwargs['filename'])
+			cls = Completed.ext_to_cls(ext, proto)
+			if not cls:
+				die(1, f'{ext!r}: unrecognized file extension for CompletedTX')
+			clsname = cls.__name__
+			modname = cls.__module__.rsplit('.', maxsplit=1)[-1]
+		case 'New' if kwargs['target'] == 'swaptx':
+			clsname = 'NewSwap'
+			modname = 'new_swap'
 
 	kwargs['proto'] = proto
 
@@ -57,47 +62,34 @@ def _get_cls_info(clsname, modname, kwargs):
 
 	return (clsname, modname, kwargs)
 
-
-def _get_obj(_clsname, _modname, **kwargs):
-	"""
-	determine cls/mod/proto and pass them to _base_proto_subclass() to get a transaction instance
-	"""
-	clsname, modname, kwargs = _get_cls_info(_clsname, _modname, kwargs)
-
-	return _base_proto_subclass(clsname, modname, kwargs['proto'])(**kwargs)
-
-async def _get_obj_async(_clsname, _modname, **kwargs):
-
-	clsname, modname, kwargs = _get_cls_info(_clsname, _modname, kwargs)
+async def _add_twctl(clsname, modname, kwargs):
 	proto = kwargs['proto']
-
-	# NB: tracking wallet needed to retrieve the 'symbol' and 'decimals' parameters of token addr
-	# (see twctl:import_token()).
-	# No twctl required for the Unsigned and Signed(data=unsigned.__dict__) classes used during
-	# signing.
+	# TwCtl instance required to retrieve the 'symbol' and 'decimals' parameters
+	# of token contract (see twctl:import_token()).
+	# No twctl required by the Unsigned and Signed classes used during signing,
+	# or by the New and Bump classes, which already have a twctl.
 	if proto and proto.tokensym and clsname in (
-			'New',
 			'OnlineSigned',
 			'AutomountOnlineSigned',
 			'Sent',
 			'AutomountSent'):
 		from ..tw.ctl import TwCtl
 		kwargs['twctl'] = await TwCtl(kwargs['cfg'], proto, no_rpc=True)
+	return (clsname, modname, kwargs)
 
-	return _base_proto_subclass(clsname, modname, proto)(**kwargs)
+def _get(clsname, modname, kwargs):
+	return _base_proto_subclass(*_get_cls_info(clsname, modname, kwargs))(**kwargs)
 
-def _get(clsname, modname):
-	return lambda **kwargs: _get_obj(clsname, modname, **kwargs)
+async def _get_async(clsname, modname, kwargs):
+	return _base_proto_subclass(*(await _add_twctl(*_get_cls_info(clsname, modname, kwargs))))(**kwargs)
 
-def _get_async(clsname, modname):
-	return lambda **kwargs: _get_obj_async(clsname, modname, **kwargs)
+BaseTX         = lambda **kwargs: _get('Base',     'base',     kwargs)
+NewTX          = lambda **kwargs: _get('New',      'new',      kwargs)
+NewSwapTX      = lambda **kwargs: _get('NewSwap',  'new_swap', kwargs)
+BumpTX         = lambda **kwargs: _get('Bump',     'bump',     kwargs)
+UnsignedTX     = lambda **kwargs: _get('Unsigned', 'unsigned', kwargs)
+SignedTX       = lambda **kwargs: _get('Signed',   'signed',   kwargs)
 
-BaseTX         = _get('Base',     'base')
-UnsignedTX     = _get('Unsigned', 'unsigned')
-
-NewTX          = _get_async('New',          'new')
-CompletedTX    = _get_async('Completed',    'completed')
-SignedTX       = _get_async('Signed',       'signed')
-OnlineSignedTX = _get_async('OnlineSigned', 'online')
-SentTX         = _get_async('Sent',         'online')
-BumpTX         = _get_async('Bump',         'bump')
+CompletedTX    = lambda **kwargs: _get_async('Completed',    'completed', kwargs)
+OnlineSignedTX = lambda **kwargs: _get_async('OnlineSigned', 'online',    kwargs)
+SentTX         = lambda **kwargs: _get_async('Sent',         'online',    kwargs)

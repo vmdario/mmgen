@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -36,7 +36,7 @@ class wallet(wallet):
 			msg(f'Invalid data length ({len(d)}) in {desc}')
 			return False
 
-		self.seed = Seed(self.cfg, bytes.fromhex(d))
+		self.seed = Seed(self.cfg, seed_bin=bytes.fromhex(d))
 
 		self.check_usr_seed_len()
 

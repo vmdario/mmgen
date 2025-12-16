@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -23,14 +23,14 @@ class coin_msg(coin_msg):
 	class unsigned(coin_msg.unsigned):
 
 		async def do_sign(self, wif, message, msghash_type):
-			from .misc import ec_sign_message_with_privkey
+			from .util import ec_sign_message_with_privkey
 			return ec_sign_message_with_privkey(self.cfg, message, bytes.fromhex(wif), msghash_type)
 
 	class signed_online(coin_msg.signed_online):
 
 		async def do_verify(self, addr, sig, message, msghash_type):
 			from ...tool.coin import tool_cmd
-			from .misc import ec_recover_pubkey
+			from .util import ec_recover_pubkey
 			return tool_cmd(
 				self.cfg,
 				proto = self.proto).pubhex2addr(

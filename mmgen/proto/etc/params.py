@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -16,9 +16,8 @@ from ..eth.params import mainnet
 
 class mainnet(mainnet):
 	chain_names = ['classic', 'ethereum_classic']
-	max_tx_fee  = '0.005'
+	max_tx_fee  = 0.005
 	coin_amt    = 'ETCAmt'
-	ignore_daemon_version = False
 
 class testnet(mainnet):
 	chain_names = ['morden', 'morden_testnet', 'classic-testnet']

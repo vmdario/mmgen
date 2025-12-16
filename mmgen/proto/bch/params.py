@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -21,14 +21,15 @@ from .cashaddr import cashaddr_decode_addr, cashaddr_encode_addr, cashaddr_addr_
 class mainnet(mainnet):
 	is_fork_of      = 'Bitcoin'
 	mmtypes         = ('L', 'C')
+	preferred_mmtypes = ('C',)
 	sighash_type    = 'ALL|FORKID'
 	forks = [
 		_finfo(478559, '000000000000000000651ef99cb9fcbe0dadde1d424bd9f15ff20136191a5eec', 'BTC', False)
 	]
 	caps = ()
 	coin_amt        = 'BCHAmt'
-	max_tx_fee      = '0.1'
-	ignore_daemon_version = False
+	max_tx_fee      = 0.1
+	max_op_return_data_len = 80
 	cashaddr_pfx    = 'bitcoincash'
 	cashaddr        = True
 

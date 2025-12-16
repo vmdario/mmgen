@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -102,15 +102,14 @@ class ImmutableAttr: # Descriptor
 	"""
 	ok_dtypes = (type, type(None), type(lambda:0))
 
-	def __init__(self, dtype, typeconv=True, set_none_ok=False, include_proto=False):
+	def __init__(self, dtype, *, typeconv=True, set_none_ok=False, include_proto=False):
 		self.set_none_ok = set_none_ok
 		self.typeconv = typeconv
 
 		assert isinstance(dtype, self.ok_dtypes), 'ImmutableAttr_check1'
-		if include_proto:
-			assert typeconv, 'ImmutableAttr_check2'
+
 		if set_none_ok:
-			assert typeconv and not isinstance(dtype, str), 'ImmutableAttr_check3'
+			assert typeconv and not isinstance(dtype, str), 'ImmutableAttr_check2'
 
 		if typeconv:
 			# convert this attribute's type
@@ -125,10 +124,11 @@ class ImmutableAttr: # Descriptor
 			def assign_with_check(instance, value):
 				if type(value) is dtype:
 					return value
-				raise TypeError('Attribute {!r} of {} instance must of type {}'.format(
+				raise TypeError('Attribute {!r} of {} instance must be of type {}, not {}'.format(
 					self.name,
 					type(instance).__name__,
-					dtype))
+					dtype,
+					type(value)))
 			self.conv = assign_with_check
 
 	def __set_name__(self, owner, name):
@@ -155,7 +155,7 @@ class ListItemAttr(ImmutableAttr):
 	For attributes that might not be present in the data instance
 	Reassignment or deletion allowed if specified
 	"""
-	def __init__(self, dtype, typeconv=True, include_proto=False, reassign_ok=False, delete_ok=False):
+	def __init__(self, dtype, *, typeconv=True, include_proto=False, reassign_ok=False, delete_ok=False):
 		self.reassign_ok = reassign_ok
 		self.delete_ok = delete_ok
 		ImmutableAttr.__init__(self, dtype, typeconv=typeconv, include_proto=include_proto)
@@ -186,8 +186,7 @@ class MMGenListItem(MMGenObject):
 		'pexit',
 		'valid_attrs',
 		'invalid_attrs',
-		'immutable_attr_init_check',
-	}
+		'immutable_attr_init_check'}
 
 	def __init__(self, *args, **kwargs):
 		# generate valid_attrs, or use the class valid_attrs if set
@@ -223,18 +222,19 @@ class MMGenRange(tuple, InitErrors, MMGenObject):
 
 	def __new__(cls, *args):
 		try:
-			if len(args) == 1:
-				s = args[0]
-				if isinstance(s, cls):
-					return s
-				assert isinstance(s, str), 'not a string or string subclass'
-				ss = s.split('-', 1)
-				first = int(ss[0])
-				last = int(ss.pop())
-			else:
-				s = repr(args) # needed if exception occurs
-				assert len(args) == 2, 'one format string arg or two start, stop args required'
-				first, last = args
+			match args:
+				case [str(s)]:
+					match s.split('-', 1):
+						case [first]:
+							last = first
+						case [first, last]:
+							pass
+					first = int(first)
+					last = int(last)
+				case [int(first), int(last)]:
+					pass
+				case _:
+					raise ValueError('one format string arg or two integer args (start, stop) required')
 			assert first <= last, 'start of range greater than end of range'
 			if cls.min_idx is not None:
 				assert first >= cls.min_idx, f'start of range < {cls.min_idx:,}'
@@ -242,7 +242,7 @@ class MMGenRange(tuple, InitErrors, MMGenObject):
 				assert last <= cls.max_idx, f'end of range > {cls.max_idx:,}'
 			return tuple.__new__(cls, (first, last))
 		except Exception as e:
-			return cls.init_fail(e, s)
+			return cls.init_fail(e, args)
 
 	@property
 	def first(self):
@@ -263,9 +263,10 @@ class Int(int, Hilite, InitErrors):
 	min_val = None
 	max_val = None
 	max_digits = None
+	trunc_ok = False
 	color = 'red'
 
-	def __new__(cls, n, base=10):
+	def __new__(cls, n, *, base=10):
 		if isinstance(n, cls):
 			return n
 		try:
@@ -281,11 +282,11 @@ class Int(int, Hilite, InitErrors):
 			return cls.init_fail(e, n)
 
 	@classmethod
-	def fmtc(cls, s, width, color=False):
-		return super().fmtc(str(s), width=width, color=color)
+	def fmtc(cls, s, width, /, *, color=False):
+		return cls.colorize(s.rjust(width), color=color)
 
-	def fmt(self, width, color=False):
-		return super().fmtc(str(self), width=width, color=color)
+	def fmt(self, width, /, *, color=False):
+		return self.fmtc(str(self), width, color=color)
 
 	def hl(self, **kwargs):
 		return super().colorize(str(self), **kwargs)
@@ -307,7 +308,7 @@ class HexStr(HiliteStr, InitErrors):
 	width = None
 	hexcase = 'lower'
 	trunc_ok = False
-	def __new__(cls, s, case=None):
+	def __new__(cls, s, *, case=None):
 		if isinstance(s, cls):
 			return s
 		if case is None:
@@ -325,13 +326,16 @@ class HexStr(HiliteStr, InitErrors):
 		except Exception as e:
 			return cls.init_fail(e, s)
 
-	def truncate(self, width, color=True):
+	def truncate(self, width, /, *, color=True):
 		return self.colorize(
 			self if width >= self.width else self[:width-2] + '..',
 			color = color)
 
 class CoinTxID(HexStr):
 	color, width, hexcase = ('purple', 64, 'lower')
+
+def is_coin_txid(s):
+	return get_obj(CoinTxID, s=s, silent=True, return_bool=True)
 
 class WalletPassword(HexStr):
 	color, width, hexcase = ('blue', 32, 'lower')
@@ -412,3 +416,7 @@ class MMGenPWIDString(MMGenLabel):
 	desc = 'password ID string'
 	forbidden = list(' :/\\')
 	trunc_ok = False
+
+class Hostname(MMGenLabel):
+	max_len = 256
+	color = 'pink'

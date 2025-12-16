@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -20,7 +20,8 @@ from .completed import Completed
 class Unsigned(Completed, TxBase.Unsigned):
 	desc = 'unsigned transaction'
 
-	async def sign(self, tx_num_str, keys): # return signed object or False; don't exit or raise exception
+	# Return signed object or False. Don’t exit or raise exception:
+	async def sign(self, keys, tx_num_str=''):
 
 		from ....exception import TransactionChainMismatch
 		try:
@@ -44,7 +45,7 @@ class Unsigned(Completed, TxBase.Unsigned):
 
 		sig_data = []
 		for d in self.inputs:
-			e = {k:getattr(d, k) for k in ('txid', 'vout', 'scriptPubKey', 'amt')}
+			e = {k: getattr(d, k) for k in ('txid', 'vout', 'scriptPubKey', 'amt')}
 			e['amount'] = e['amt']
 			del e['amt']
 			if d.mmtype == 'S':
@@ -67,7 +68,7 @@ class Unsigned(Completed, TxBase.Unsigned):
 		try:
 			self.update_serialized(ret['hex'])
 			from ....tx import SignedTX
-			new = await SignedTX(cfg=self.cfg, data=self.__dict__, automount=self.automount)
+			new = SignedTX(cfg=self.cfg, data=self.__dict__, automount=self.automount)
 			tx_decoded = await self.rpc.call('decoderawtransaction', ret['hex'])
 			new.compare_size_and_estimated_size(tx_decoded)
 			new.coin_txid = CoinTxID(self.deserialized.txid)

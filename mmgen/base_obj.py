@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -59,7 +59,7 @@ class AttrCtrl(metaclass=AttrCtrlMeta):
 		if self._locked and self._default_to_none:
 			return None
 		else:
-			raise AttributeError(f'{type(self).__name__} object has no attribute {name!r}')
+			raise AttributeError(f'{self} has no attribute {name!r}')
 
 	def __setattr__(self, name, value):
 
@@ -80,10 +80,9 @@ class AttrCtrl(metaclass=AttrCtrlMeta):
 			ref_val = getattr(type(self), name) if self._use_class_attr else getattr(self, name)
 
 			if (
-				(name not in self._skip_type_check)
-				and (ref_val is not None)
-				and not isinstance(value, type(ref_val))
-			):
+					(name not in self._skip_type_check)
+					and (ref_val is not None)
+					and not isinstance(value, type(ref_val))):
 				do_error(name, value, ref_val)
 
 		return object.__setattr__(self, name, value)

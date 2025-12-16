@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -13,17 +13,22 @@ proto.btc.tw.txhistory: Bitcoin base protocol tracking wallet transaction histor
 """
 
 from collections import namedtuple
+
 from ....tw.txhistory import TwTxHistory
 from ....tw.shared import get_tw_label, TwMMGenID
 from ....addr import CoinAddr
 from ....util import msg, msg_r
 from ....color import nocolor, red, pink, gray
 from ....obj import TwComment, CoinTxID, Int
+
 from .rpc import BitcoinTwRPC
+from .view import BitcoinTwView
 
 class BitcoinTwTransaction:
 
-	def __init__(self, parent, proto, rpc,
+	no_address_str = '[DATA]'
+
+	def __init__(self, *, parent, proto, rpc,
 			idx,          # unique numeric identifier of this transaction in listing
 			unspent_info, # addrs in wallet with balances: {'mmid': {'addr', 'comment', 'amt'}}
 			mm_map,       # all addrs in wallet: ['addr', ['twmmid', 'comment']]
@@ -58,7 +63,9 @@ class BitcoinTwTransaction:
 			_d = namedtuple('vout_info', ['txid', 'coin_addr', 'twlabel', 'data'])
 			def gen():
 				for d in data:
-					addr = d.data['scriptPubKey'].get('address') or d.data['scriptPubKey']['addresses'][0]
+					addr = (
+						d.data['scriptPubKey'].get('address') or
+						d.data['scriptPubKey'].get('addresses',[self.no_address_str])[0])
 					yield _d(
 						txid = d.txid,
 						coin_addr = addr,
@@ -101,12 +108,10 @@ class BitcoinTwTransaction:
 		# 'outputs' refers to wallet-related outputs only
 		self.vouts_info = {
 			'inputs':  gen_vouts_info(gen_prevouts_data()),
-			'outputs': gen_vouts_info(gen_wallet_vouts_data())
-		}
+			'outputs': gen_vouts_info(gen_wallet_vouts_data())}
 		self.max_addrlen = {
 			'inputs':  max(len(addr) for addr in gen_all_addrs('inputs')),
-			'outputs': max(len(addr) for addr in gen_all_addrs('outputs'))
-		}
+			'outputs': max(len(addr) for addr in gen_all_addrs('outputs'))}
 		self.inputs_total = total(self.vouts_info['inputs'])
 		self.outputs_total = sum(coin_amt(i['value']) for i in self.tx['decoded']['vout'])
 		self.wallet_outputs_total = total(self.vouts_info['outputs'])
@@ -123,28 +128,29 @@ class BitcoinTwTransaction:
 		self.time = self.tx.get('blocktime') or self.tx['time']
 		self.time_received = self.tx.get('timereceived')
 
-	def blockheight_disp(self, color):
+	def blockheight_disp(self, *, color):
 		return (
 			# old/altcoin daemons return no 'blockheight' field, so use confirmations instead
 			Int(self.rpc.blockcount + 1 - self.confirmations).hl(color=color)
 			if self.confirmations > 0 else None)
 
-	def age_disp(self, age_fmt, width, color):
-		if age_fmt == 'confs':
-			ret_str = str(self.confirmations).ljust(width)
-			return gray(ret_str) if self.confirmations < 0 and color else ret_str
-		elif age_fmt == 'block':
-			ret = (self.rpc.blockcount - (abs(self.confirmations) - 1)) * (-1 if self.confirmations < 0 else 1)
-			ret_str = str(ret).ljust(width)
-			return gray(ret_str) if ret < 0 and color else ret_str
-		else:
-			return self.parent.date_formatter[age_fmt](self.rpc, self.tx.get('blocktime', 0))
+	def age_disp(self, age_fmt, *, width, color):
+		match age_fmt:
+			case 'confs':
+				ret_str = str(self.confirmations).ljust(width)
+				return gray(ret_str) if self.confirmations < 0 and color else ret_str
+			case 'block':
+				ret = (self.rpc.blockcount - (abs(self.confirmations) - 1)) * (-1 if self.confirmations < 0 else 1)
+				ret_str = str(ret).ljust(width)
+				return gray(ret_str) if ret < 0 and color else ret_str
+			case _:
+				return self.parent.date_formatter[age_fmt](self.rpc, self.tx.get('blocktime', 0))
 
 	def txdate_disp(self, age_fmt):
 		return self.parent.date_formatter[age_fmt](self.rpc, self.time)
 
-	def txid_disp(self, color, width=None):
-		return self.txid.hl(color=color) if width is None else self.txid.truncate(width=width, color=color)
+	def txid_disp(self, *, color, width=None):
+		return self.txid.hl(color=color) if width is None else self.txid.truncate(width, color=color)
 
 	def vouts_list_disp(self, src, color, indent, addr_view_pref):
 
@@ -161,7 +167,9 @@ class BitcoinTwTransaction:
 						i = CoinTxID(e.txid).hl(color=color),
 						n = (nocolor, red)[color](str(e.data['n']).ljust(3)),
 						a = CoinAddr(self.proto, e.coin_addr).fmt(
-							addr_view_pref, width=self.max_addrlen[src], color=color),
+							addr_view_pref, self.max_addrlen[src], color=color)
+								if e.coin_addr != self.no_address_str else
+							CoinAddr.fmtc(e.coin_addr, self.max_addrlen[src], color=color),
 						A = self.proto.coin_amt(e.data['value']).fmt(color=color)
 					).rstrip()
 				else:
@@ -193,7 +201,10 @@ class BitcoinTwTransaction:
 				if not mmid:
 					if width and space_left < addr_w:
 						break
-					yield CoinAddr(self.proto, e.coin_addr).fmt(addr_view_pref, width=addr_w, color=color)
+					yield (
+						CoinAddr(self.proto, e.coin_addr).fmt(addr_view_pref, addr_w, color=color)
+							if e.coin_addr != self.no_address_str else
+						CoinAddr.fmtc(e.coin_addr, addr_w, color=color))
 					space_left -= addr_w
 				elif mmid.type == 'mmgen':
 					mmid_disp = mmid + bal_star
@@ -206,7 +217,7 @@ class BitcoinTwTransaction:
 						break
 					yield TwMMGenID.hl2(
 						TwMMGenID,
-						s = CoinAddr.fmtc(mmid.split(':', 1)[1] + bal_star, width=addr_w),
+						s = CoinAddr.fmtc(mmid.split(':', 1)[1] + bal_star, addr_w),
 						color = color,
 						color_override = co)
 					space_left -= addr_w
@@ -229,21 +240,20 @@ class BitcoinTwTransaction:
 				self.fee.to_unit(atomic_unit) // self.vsize,
 				atomic_unit)))
 
-class BitcoinTwTxHistory(TwTxHistory, BitcoinTwRPC):
+class BitcoinTwTxHistory(BitcoinTwView, TwTxHistory, BitcoinTwRPC):
 
 	has_age = True
 	hdr_lbl = 'transaction history'
 	desc = 'transaction history'
 	item_desc = 'transaction'
-	no_data_errmsg = 'No transactions in tracking wallet!'
+	item_desc_pl = 'transactions'
 	prompt_fs_in = [
 		'Sort options: [t]xid, [a]mt, total a[m]t, [A]ge, block[n]um, [r]everse',
 		'Column options: toggle [D]ays/date/confs/block, tx[i]d, [T]otal amt',
 		'View/Print: pager [v]iew, full pager [V]iew, [p]rint, full [P]rint{s}',
 		'Filters/Actions: show [u]nconfirmed, [q]uit menu, r[e]draw:']
 	prompt_fs_repl = {
-		'BCH': (1, 'Column options: toggle [D]ate/confs, cas[h]addr, tx[i]d, [T]otal amt')
-	}
+		'BCH': (1, 'Column options: toggle [D]ate/confs, cas[h]addr, tx[i]d, [T]otal amt')}
 	key_mappings = {
 		'A':'s_age',
 		'n':'s_blockheight',
@@ -265,40 +275,31 @@ class BitcoinTwTxHistory(TwTxHistory, BitcoinTwRPC):
 		blockhash = (
 			await self.rpc.call('getblockhash', self.sinceblock)
 				if self.sinceblock else '')
-		# bitcoin-cli help listsinceblock:
-		# Arguments:
-		# 1. blockhash            (string, optional) If set, the block hash to list transactions since,
-		#                         otherwise list all transactions.
-		# 2. target_confirmations (numeric, optional, default=1) Return the nth block hash from the main
-		#                         chain. e.g. 1 would mean the best block hash. Note: this is not used
-		#                         as a filter, but only affects [lastblock] in the return value
-		# 3. include_watchonly    (boolean, optional, default=true for watch-only wallets, otherwise
-		#                         false) Include transactions to watch-only addresses
-		# 4. include_removed      (boolean, optional, default=true) Show transactions that were removed
-		#                         due to a reorg in the "removed" array (not guaranteed to work on
-		#                         pruned nodes)
-		return (await self.rpc.call('listsinceblock', blockhash, 1, True, False))['transactions']
+		return (await self.rpc.icall(
+			'listsinceblock',
+			blockhash = blockhash,
+			include_removed = False))['transactions']
 
 	async def gen_data(self, rpc_data, lbl_id):
 
 		def gen_parsed_data():
 			for o in rpc_data:
 				if lbl_id in o:
-					l = get_tw_label(self.proto, o[lbl_id])
+					lbl = get_tw_label(self.proto, o[lbl_id])
+					yield o | {
+						'twmmid': lbl.mmid,
+						'comment': lbl.comment or ''}
 				else:
 					assert o['category'] == 'send', f"{o['address']}: {o['category']} != 'send'"
-					l = None
-				o.update({
-					'twmmid': l.mmid if l else None,
-					'comment': (l.comment or '') if l else None,
-				})
-				yield o
+					yield o | {
+						'twmmid': None,
+						'comment': None}
 
 		data = list(gen_parsed_data())
 
 		if self.cfg.debug_tw:
 			import json
-			from ....rpc import json_encoder
+			from ....rpc.util import json_encoder
 			def do_json_dump(*data):
 				nw = f'{self.proto.coin.lower()}-{self.proto.network}'
 				for d, fn_stem in data:
@@ -312,7 +313,7 @@ class BitcoinTwTxHistory(TwTxHistory, BitcoinTwRPC):
 				_mmp(TwMMGenID(self.proto, i['twmmid']), TwComment(i['comment']))
 					if i['twmmid'] else _mmp(None, None)
 			)
-			for i in data}
+			for i in data if 'address' in i}
 
 		if self.sinceblock: # mapping data may be incomplete for inputs, so update from 'listlabels'
 			mm_map.update(
@@ -338,14 +339,12 @@ class BitcoinTwTxHistory(TwTxHistory, BitcoinTwRPC):
 			do_json_dump((_wallet_txs, 'wallet-txs'),)
 
 		_wip = namedtuple('prevout', ['txid', 'vout'])
-		txdata = [
-			{
-				'tx': tx,
-				'wallet_vouts': sorted({i.vout for i in
-					[_wip(CoinTxID(d['txid']), d['vout']) for d in data]
-						if i.txid == tx['txid']}),
-				'prevouts': [_wip(CoinTxID(vin['txid']), vin['vout']) for vin in tx['decoded']['vin']]
-			}
+		txdata = [{
+			'tx': tx,
+			'wallet_vouts': sorted({i.vout for i in
+				[_wip(CoinTxID(d['txid']), d['vout']) for d in data]
+					if i.txid == tx['txid']}),
+			'prevouts': [_wip(CoinTxID(vin['txid']), vin['vout']) for vin in tx['decoded']['vin']]}
 				for tx in _wallet_txs]
 
 		_prevout_txids = {i.txid for d in txdata for i in d['prevouts']}

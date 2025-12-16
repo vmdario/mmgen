@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,15 +27,15 @@ class EthereumTwGetBalance(TwGetBalance):
 
 	start_labels = ('TOTAL', 'Non-MMGen')
 	conf_cols = {
-		'ge_minconf': 'Balance',
-	}
+		'ge_minconf': 'Balance'}
 
-	async def __init__(self, cfg, proto, *args, **kwargs):
+	async def __init__(self, cfg, proto, *, minconf, quiet):
 		self.twctl = await TwCtl(cfg, proto, mode='w')
-		await super().__init__(cfg, proto, *args, **kwargs)
+		await super().__init__(cfg, proto, minconf=minconf, quiet=quiet)
 
 	async def create_data(self):
 		in_data = self.twctl.mmid_ordered_dict
+		block = self.twctl.rpc.get_block_from_minconf(self.minconf)
 		for d in in_data:
 			if d.type == 'mmgen':
 				label = d.obj.sid
@@ -44,7 +44,7 @@ class EthereumTwGetBalance(TwGetBalance):
 			else:
 				label = 'Non-MMGen'
 
-			amt = await self.twctl.get_balance(in_data[d]['addr'])
+			amt = await self.twctl.get_balance(in_data[d]['addr'], block=block)
 
 			self.data['TOTAL']['ge_minconf'] += amt
 			self.data[label]['ge_minconf'] += amt

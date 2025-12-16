@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -58,7 +58,9 @@ class OpView(OpSync):
 		wallet_height = self.c.call('get_height')['height']
 		msg(f'  Wallet height: {wallet_height}')
 
-		self.wallets_data[fn.name] = MoneroWalletRPC(self, d).get_wallet_data(print=False, skip_empty_ok=True)
+		self.wallets_data[fn.name] = MoneroWalletRPC(self, d).get_wallet_data(
+			print = False,
+			skip_empty_ok = True)
 
 		if not last:
 			self.c.call('close_wallet')

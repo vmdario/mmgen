@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -32,8 +32,7 @@ class OpWallet(OpBase):
 		'no_start_wallet_daemon',
 		'no_stop_wallet_daemon',
 		'autosign',
-		'watch_only',
-	)
+		'watch_only')
 	wallet_offline = False
 	wallet_exists = True
 	start_daemon = True
@@ -52,11 +51,11 @@ class OpWallet(OpBase):
 		def check_wallets():
 			for d in self.addr_data:
 				fn = self.get_wallet_fn(d)
-				exists = wallet_exists(fn)
-				if exists and not self.wallet_exists:
-					die(1, f'Wallet ‘{fn}’ already exists!')
-				elif not exists and self.wallet_exists:
-					die(1, f'Wallet ‘{fn}’ not found!')
+				match wallet_exists(fn):
+					case True if not self.wallet_exists:
+						die(1, f'Wallet ‘{fn}’ already exists!')
+					case False if self.wallet_exists:
+						die(1, f'Wallet ‘{fn}’ not found!')
 
 		super().__init__(cfg, uarg_tuple)
 
@@ -70,8 +69,7 @@ class OpWallet(OpBase):
 			test_suite  = self.cfg.test_suite,
 			monerod_addr = self.cfg.daemon or None,
 			trust_monerod = self.trust_monerod,
-			test_monerod = not self.wallet_offline,
-		)
+			test_monerod = not self.wallet_offline)
 
 		if self.wallet_offline:
 			self.wd.usr_daemon_args = ['--offline']
@@ -79,8 +77,7 @@ class OpWallet(OpBase):
 		self.c = MoneroWalletRPCClient(
 			cfg             = self.cfg,
 			daemon          = self.wd,
-			test_connection = False,
-		)
+			test_connection = False)
 
 		if self.cfg.offline:
 			from ...wallet import Wallet
@@ -100,11 +97,14 @@ class OpWallet(OpBase):
 			self.mount_removable_device()
 			# with watch_only, make a second attempt to open the file as KeyAddrList:
 			for first_try in (True, False):
+				addr_list = ViewKeyAddrList if (self.cfg.watch_only and first_try) else KeyAddrList
 				try:
-					self.kal = (ViewKeyAddrList if (self.cfg.watch_only and first_try) else KeyAddrList)(
-						cfg      = cfg,
-						proto    = self.proto,
-						addrfile = str(self.autosign_viewkey_addr_file) if self.cfg.autosign else self.uargs.infile,
+					self.kal = addr_list(
+						cfg    = cfg,
+						proto  = self.proto,
+						infile =
+							str(self.autosign_viewkey_addr_file) if self.cfg.autosign else
+							self.uargs.infile,
 						key_address_validity_check = True,
 						skip_chksum_msg = True)
 					break
@@ -134,13 +134,15 @@ class OpWallet(OpBase):
 
 	def get_coin_daemon_rpc(self):
 
-		host, port = self.cfg.daemon.split(':') if self.cfg.daemon else ('localhost', self.wd.monerod_port)
+		host, port = (
+			self.cfg.daemon.split(':') if self.cfg.daemon else
+			('localhost', self.wd.monerod_port))
 
 		from ...daemon import CoinDaemon
 		return MoneroRPCClient(
 			cfg    = self.cfg,
 			proto  = self.proto,
-			daemon = CoinDaemon(self.cfg, 'xmr'),
+			daemon = CoinDaemon(self.cfg, network_id='xmr'),
 			host   = host,
 			port   = int(port),
 			user   = None,
@@ -154,24 +156,27 @@ class OpWallet(OpBase):
 			die(2,
 				'{a} viewkey-address files found in autosign mountpoint directory ‘{b}’!\n'.format(
 					a = 'Multiple' if flist else 'No',
-					b = self.asi.xmr_dir
-				)
-				+ 'Have you run ‘mmgen-autosign setup’ on your offline machine with the --xmrwallets option?'
-			)
+					b = self.asi.xmr_dir)
+				+ 'Have you run ‘mmgen-autosign setup’ on your offline machine'
+				' with the --xmrwallets option?')
 		else:
 			return flist[0]
 
 	def create_addr_data(self):
 		if self.uargs.wallets:
-			idxs = AddrIdxList(self.uargs.wallets)
+			idxs = AddrIdxList(fmt_str=self.uargs.wallets)
 			self.addr_data = [d for d in self.kal.data if d.idx in idxs]
 			if len(self.addr_data) != len(idxs):
-				die(1, f'List {self.uargs.wallets!r} contains addresses not present in supplied key-address file')
+				die(1,
+					f'List {self.uargs.wallets!r} contains addresses not present'
+					' in supplied key-address file')
 		else:
 			self.addr_data = self.kal.data
 
-	async def restart_wallet_daemon(self):
-		atexit.register(lambda: asyncio.run(self.stop_wallet_daemon()))
+	async def restart_wallet_daemon(self, registered=[]):
+		if not registered:
+			atexit.register(lambda: asyncio.run(self.stop_wallet_daemon()))
+			registered.append(None)
 		await self.c.restart_daemon()
 
 	async def stop_wallet_daemon(self):
@@ -179,11 +184,11 @@ class OpWallet(OpBase):
 			try:
 				await self.c.stop_daemon()
 			except KeyboardInterrupt:
-				ymsg('\nForce killing wallet daemon')
+				ymsg('\nForce-killing wallet daemon')
 				self.c.daemon.force_kill = True
 				self.c.daemon.stop()
 
-	def get_wallet_fn(self, data, watch_only=None):
+	def get_wallet_fn(self, data, *, watch_only=None):
 		if watch_only is None:
 			watch_only = self.cfg.watch_only
 		return Path(
@@ -192,36 +197,35 @@ class OpWallet(OpBase):
 				a = self.kal.al_id.sid,
 				b = data.idx,
 				c = 'WatchOnly' if watch_only else '',
-				d = f'.{self.cfg.network}' if self.cfg.network != 'mainnet' else '')
-		)
+				d = f'.{self.cfg.network}' if self.cfg.network != 'mainnet' else ''))
 
 	@property
 	def add_wallet_desc(self):
 		return 'offline signing ' if self.cfg.offline else 'watch-only ' if self.cfg.watch_only else ''
 
 	async def main(self):
-		gmsg('\n{a}ing {b} {c}wallet{d}'.format(
-			a = self.stem.capitalize(),
-			b = len(self.addr_data),
-			c = self.add_wallet_desc,
-			d = suf(self.addr_data)))
-		processed = 0
+		if not self.compat_call:
+			gmsg('\n{a}ing {b} {c}wallet{d}'.format(
+				a = self.stem.capitalize(),
+				b = len(self.addr_data),
+				c = self.add_wallet_desc,
+				d = suf(self.addr_data)))
+		data = []
 		for n, d in enumerate(self.addr_data): # [d.sec,d.addr,d.wallet_passwd,d.viewkey]
 			fn = self.get_wallet_fn(d)
 			gmsg('\n{a}ing wallet {b}/{c} ({d})'.format(
 				a = self.stem.capitalize(),
 				b = n + 1,
 				c = len(self.addr_data),
-				d = fn.name,
-			))
-			processed += await self.process_wallet(d, fn, last=n==len(self.addr_data)-1)
-		gmsg(f'\n{processed} wallet{suf(processed)} {self.stem}ed\n')
-		return processed
+				d = fn.name))
+			data.append(await self.process_wallet(d, fn, last=n == len(self.addr_data) - 1))
+		if not self.compat_call:
+			gmsg(f'\n{len(data)} wallet{suf(len(data))} {self.stem}ed\n')
+		return data if self.return_data else sum(map(bool, data))
 
 	def head_msg(self, wallet_idx, fn):
 		gmsg('\n{a} {b}wallet #{c} ({d})'.format(
 			a = self.action.capitalize(),
 			b = self.add_wallet_desc,
 			c = wallet_idx,
-			d = fn.name
-		))
+			d = fn.name))

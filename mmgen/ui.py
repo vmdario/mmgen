@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -16,7 +16,7 @@ import sys, os
 
 from .util import msg, msg_r, Msg, die
 
-def confirm_or_raise(cfg, message, action, expect='YES', exit_msg='Exiting at user request'):
+def confirm_or_raise(cfg, message, action, *, expect='YES', exit_msg='Exiting at user request'):
 	if message:
 		msg(message)
 	if line_input(
@@ -32,13 +32,13 @@ def get_words_from_user(cfg, prompt):
 		msg('Sanitized input: [{}]'.format(' '.join(words)))
 	return words
 
-def get_data_from_user(cfg, desc='data'): # user input MUST be UTF-8
+def get_data_from_user(cfg, *, desc='data'): # user input MUST be UTF-8
 	data = line_input(cfg, f'Enter {desc}: ', echo=cfg.echo_passphrase)
 	if cfg.debug:
 		msg(f'User input: [{data}]')
 	return data
 
-def line_input(cfg, prompt, echo=True, insert_txt='', hold_protect=True):
+def line_input(cfg, prompt, *, echo=True, insert_txt='', hold_protect=True):
 	"""
 	multi-line prompts OK
 	one-line prompts must begin at beginning of line
@@ -81,12 +81,20 @@ def line_input(cfg, prompt, echo=True, insert_txt='', hold_protect=True):
 	return reply.strip()
 
 def keypress_confirm(
-	cfg,
-	prompt,
-	default_yes     = False,
-	verbose         = False,
-	no_nl           = False,
-	complete_prompt = False):
+		cfg,
+		prompt,
+		*,
+		default_yes     = False,
+		verbose         = False,
+		no_nl           = False,
+		complete_prompt = False,
+		do_exit         = False,
+		exit_msg        = 'Exiting at user request'):
+
+	def do_return(retval):
+		if do_exit and not retval:
+			die(1, exit_msg)
+		return retval
 
 	if not complete_prompt:
 		prompt = '{} {}: '.format(prompt, '(Y/n)' if default_yes else '(y/N)')
@@ -95,19 +103,19 @@ def keypress_confirm(
 
 	if cfg.accept_defaults:
 		msg(prompt)
-		return default_yes
+		return do_return(default_yes)
 
 	from .term import get_char
 	while True:
-		reply = get_char(prompt, immed_chars='yYnN').strip('\n\r')
-		if not reply:
-			msg_r(nl)
-			return default_yes
-		elif reply in 'yYnN':
-			msg_r(nl)
-			return reply in 'yY'
-		else:
-			msg_r('\nInvalid reply\n' if verbose else '\r')
+		match get_char(prompt, immed_chars='yYnN').strip('\n\r'):
+			case '':
+				msg_r(nl)
+				return do_return(default_yes)
+			case 'y' | 'Y' | 'n' | 'N' as reply:
+				msg_r(nl)
+				return do_return(reply in 'yY')
+			case _:
+				msg_r('\nInvalid reply\n' if verbose else '\r')
 
 def do_pager(text):
 
@@ -133,7 +141,7 @@ def do_pager(text):
 		Msg(text+end_msg)
 	set_vt100()
 
-def do_license_msg(cfg, immed=False):
+def do_license_msg(cfg, *, immed=False):
 
 	if cfg.quiet or cfg.no_license or cfg.yes or not cfg.stdin_tty:
 		return
@@ -145,12 +153,12 @@ def do_license_msg(cfg, immed=False):
 	from .term import get_char
 	prompt = "Press 'w' for conditions and warranty info, or 'c' to continue: "
 	while True:
-		reply = get_char(prompt, immed_chars=('', 'wc')[bool(immed)])
-		if reply == 'w':
-			do_pager(gpl.conditions)
-		elif reply == 'c':
-			msg('')
-			break
-		else:
-			msg_r('\r')
+		match get_char(prompt, immed_chars=('', 'wc')[bool(immed)]):
+			case 'w':
+				do_pager(gpl.conditions)
+			case 'c':
+				msg('')
+				break
+			case _:
+				msg_r('\r')
 	msg('')

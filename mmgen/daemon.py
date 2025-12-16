@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ class Daemon(Lockable):
 	_reset_ok = ('debug', 'wait', 'pids')
 	version_info_arg = '--version'
 
-	def __init__(self, cfg, opts=None, flags=None):
+	def __init__(self, cfg, *, opts=None, flags=None):
 
 		self.cfg = cfg
 		self.platform = sys.platform
@@ -78,7 +78,7 @@ class Daemon(Lockable):
 		p = Popen(cmd, creationflags=CREATE_NEW_CONSOLE, startupinfo=si)
 		p.wait()
 
-	def exec_cmd(self, cmd, is_daemon=False, check_retcode=False):
+	def exec_cmd(self, cmd, *, is_daemon=False, check_retcode=False):
 		out = (PIPE, None)[is_daemon and self.opt.no_daemonize]
 		try:
 			cp = run(cmd, check=False, stdout=out, stderr=out)
@@ -91,7 +91,7 @@ class Daemon(Lockable):
 			print(cp)
 		return cp
 
-	def run_cmd(self, cmd, silent=False, is_daemon=False, check_retcode=False):
+	def run_cmd(self, cmd, *, silent=False, is_daemon=False, check_retcode=False):
 
 		if self.debug:
 			msg('\n\n')
@@ -105,7 +105,7 @@ class Daemon(Lockable):
 		if self.use_threads and is_daemon and not self.opt.no_daemonize:
 			ret = self.exec_cmd_thread(cmd)
 		else:
-			ret = self.exec_cmd(cmd, is_daemon, check_retcode)
+			ret = self.exec_cmd(cmd, is_daemon=is_daemon, check_retcode=check_retcode)
 
 		if isinstance(ret, CompletedProcess):
 			if ret.stdout and (self.debug or not silent):
@@ -120,23 +120,26 @@ class Daemon(Lockable):
 		if self.use_pidfile:
 			with open(self.pidfile) as fp:
 				return fp.read().strip()
-		elif self.platform == 'win32':
-			# Assumes only one running instance of given daemon.  If multiple daemons are running,
-			# the first PID in the list is returned and self.pids is set to the PID list.
-			ss = f'{self.exec_fn}.exe'
-			cp = self.run_cmd(['ps', '-Wl'], silent=True)
-			self.pids = ()
-			# use Windows, not Cygwin, PID
-			pids = tuple(line.split()[3] for line in cp.stdout.decode().splitlines() if ss in line)
-			if pids:
-				if len(pids) > 1:
-					self.pids = pids
-				return pids[0]
-		elif self.platform in ('linux', 'darwin'):
-			ss = ' '.join(self.start_cmd)
-			cp = self.run_cmd(['pgrep', '-f', ss], silent=True)
-			if cp.stdout:
-				return cp.stdout.strip().decode()
+
+		match self.platform:
+			case 'win32':
+				# Assumes only one running instance of given daemon.  If multiple daemons are running,
+				# the first PID in the list is returned and self.pids is set to the PID list.
+				ss = f'{self.exec_fn}.exe'
+				cp = self.run_cmd(['ps', '-Wl'], silent=True)
+				self.pids = ()
+				# use Windows, not Cygwin, PID
+				pids = tuple(line.split()[3] for line in cp.stdout.decode().splitlines() if ss in line)
+				if pids:
+					if len(pids) > 1:
+						self.pids = pids
+					return pids[0]
+			case 'linux' | 'darwin':
+				ss = ' '.join(self.start_cmd)
+				cp = self.run_cmd(['pgrep', '-f', ss], silent=True)
+				if cp.stdout:
+					return cp.stdout.strip().decode()
+
 		die(2, f'{ss!r} not found in process list, cannot determine PID')
 
 	@property
@@ -166,7 +169,7 @@ class Daemon(Lockable):
 	def cli(self, *cmds, silent=False):
 		return self.run_cmd(self.cli_cmd(*cmds), silent=silent)
 
-	def state_msg(self, extra_text=None):
+	def state_msg(self, *, extra_text=None):
 		try:
 			pid = self.pid
 		except:
@@ -181,7 +184,7 @@ class Daemon(Lockable):
 	def pre_start(self):
 		pass
 
-	def start(self, quiet=False, silent=False):
+	def start(self, *, quiet=False, silent=False):
 		if self.state == 'ready':
 			if not (quiet or silent):
 				msg(self.state_msg(extra_text='already'))
@@ -200,7 +203,7 @@ class Daemon(Lockable):
 
 		return ret
 
-	def stop(self, quiet=False, silent=False):
+	def stop(self, *, quiet=False, silent=False):
 		if self.state == 'ready':
 			if not silent:
 				msg(f'Stopping {self.desc} on port {self.bind_port}')
@@ -221,11 +224,11 @@ class Daemon(Lockable):
 				msg(f'{self.desc} on port {self.bind_port} not running')
 			return True
 
-	def restart(self, silent=False):
+	def restart(self, *, silent=False):
 		self.stop(silent=silent)
 		return self.start(silent=silent)
 
-	def test_socket(self, host, port, timeout=10):
+	def test_socket(self, host, port, *, timeout=10):
 		import socket
 		try:
 			socket.create_connection((host, port), timeout=timeout).close()
@@ -235,7 +238,7 @@ class Daemon(Lockable):
 			return True
 
 	def wait_for_state(self, req_state):
-		for _ in range(300):
+		for _ in range(self.cfg.daemon_state_timeout * 5):
 			if self.state == req_state:
 				return True
 			time.sleep(0.2)
@@ -244,24 +247,24 @@ class Daemon(Lockable):
 	@classmethod
 	def get_exec_version_str(cls):
 		try:
-			cp = run([cls.exec_fn, cls.version_info_arg], stdout=PIPE, stderr=PIPE, check=True)
+			cp = run([cls.exec_fn, cls.version_info_arg], stdout=PIPE, stderr=PIPE, check=True, text=True)
 		except Exception as e:
 			die(2, f'{e}\nUnable to execute {cls.exec_fn}')
 
 		if cp.returncode:
 			die(2, f'Unable to execute {cls.exec_fn}')
 		else:
-			res = cp.stdout.decode().splitlines()
+			res = cp.stdout.splitlines()
 			return (res[0] if len(res) == 1 else [s for s in res if 'ersion' in s][0]).strip()
 
 class RPCDaemon(Daemon):
 
 	avail_opts = ('no_daemonize',)
 
-	def __init__(self, cfg, opts=None, flags=None):
+	def __init__(self, cfg, *, opts=None, flags=None):
 		super().__init__(cfg, opts=opts, flags=flags)
 		self.desc = '{} {} {}RPC daemon'.format(
-			self.rpc_type,
+			self.rpc_desc,
 			getattr(self.proto.network_names, self.proto.network),
 			'test suite ' if self.test_suite else '')
 		self._set_ok += ('usr_daemon_args',)
@@ -287,9 +290,8 @@ class CoinDaemon(Daemon):
 		'BCH': _cd(['bitcoin_cash_node']),
 		'LTC': _cd(['litecoin_core']),
 		'XMR': _cd(['monero']),
-		'ETH': _cd(['geth', 'erigon', 'openethereum']),
-		'ETC': _cd(['parity']),
-	}
+		'ETH': _cd(['geth', 'reth', 'erigon']), #, 'openethereum'
+		'ETC': _cd(['parity'])}
 
 	@classmethod
 	def all_daemon_ids(cls):
@@ -317,7 +319,7 @@ class CoinDaemon(Daemon):
 		return ret
 
 	@classmethod
-	def get_daemon(cls, cfg, coin, daemon_id, proto=None):
+	def get_daemon(cls, cfg, coin, daemon_id, *, proto=None):
 		if proto:
 			proto_cls = type(proto)
 		else:
@@ -339,6 +341,7 @@ class CoinDaemon(Daemon):
 
 	def __new__(cls,
 			cfg,
+			*,
 			network_id = None,
 			proto      = None,
 			opts       = None,
@@ -366,7 +369,11 @@ class CoinDaemon(Daemon):
 		daemon_ids = cls.get_daemon_ids(cfg, coin)
 		if not daemon_ids:
 			die(1, f'No configured daemons for coin {coin}!')
-		daemon_id = daemon_id or cfg.daemon_id or daemon_ids[0]
+		daemon_id = (
+			daemon_id
+			or getattr(cfg, f'{coin.lower()}_daemon_id', None)
+			or cfg.daemon_id
+			or daemon_ids[0])
 
 		if daemon_id not in daemon_ids:
 			die(1, f'{daemon_id!r}: invalid daemon_id - valid choices: {fmt_list(daemon_ids)}')
@@ -384,6 +391,7 @@ class CoinDaemon(Daemon):
 
 	def __init__(self,
 			cfg,
+			*,
 			network_id = None,
 			proto      = None,
 			opts       = None,
@@ -420,7 +428,8 @@ class CoinDaemon(Daemon):
 		ps_adj = (port_shift or 0) + (self.test_suite_port_shift if test_suite else 0)
 
 		# user-set values take precedence
-		self.rpc_port = (cfg.rpc_port or 0) + (port_shift or 0) if cfg.rpc_port else ps_adj + self.get_rpc_port()
+		usr_rpc_port = self.proto.rpc_port or cfg.rpc_port
+		self.rpc_port = usr_rpc_port + (port_shift or 0) if usr_rpc_port else ps_adj + self.get_rpc_port()
 		self.p2p_port = (
 			p2p_port or (
 				self.get_p2p_port() + ps_adj if self.get_p2p_port() and (test_suite or ps_adj) else None
@@ -488,10 +497,7 @@ class CoinDaemon(Daemon):
 		"remove the network's datadir"
 		assert self.test_suite, 'datadir removal restricted to test suite'
 		if self.state == 'stopped':
-			run([
-				('rm' if self.platform == 'win32' else '/bin/rm'),
-				'-rf',
-				self.datadir])
+			run(['rm', '-rf', self.datadir])
 			set_vt100()
 		else:
 			msg(f'Cannot remove {self.network_datadir!r} - daemon is not stopped')

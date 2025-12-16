@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -38,30 +38,33 @@ class wallet(wallet):
 			msg(f'Invalid data length ({len(ld)}) in {desc}')
 			return False
 
-		a, b = ld[0], ''.join(ld[1:])
+		chksum, b58_seed = ld[0], ''.join(ld[1:])
 
-		if not is_chksum_6(a):
-			msg(f'{a!r}: invalid checksum format in {desc}')
+		if not is_chksum_6(chksum):
+			msg(f'{chksum!r}: invalid checksum format in {desc}')
 			return False
 
-		if not is_b58_str(b):
-			msg(f'{b!r}: not a base 58 string, in {desc}')
+		if not is_b58_str(b58_seed):
+			msg(f'{b58_seed!r}: not a base 58 string, in {desc}')
 			return False
 
 		self.cfg._util.vmsg_r(f'Validating {desc} checksum...')
 
-		if not self.cfg._util.compare_chksums(a, 'file', make_chksum_6(b), 'computed', verbose=True):
+		if not self.cfg._util.compare_chksums(
+				chksum, 'file',
+				make_chksum_6(b58_seed), 'computed',
+				verbose = True):
 			return False
 
-		ret = baseconv('b58').tobytes(b, pad='seed')
+		ret = baseconv('b58').tobytes(b58_seed, pad='seed')
 
 		if ret is False:
-			msg(f'Invalid base-58 encoded seed: {b}')
+			msg(f'Invalid base-58 encoded seed: {b58_seed}')
 			return False
 
-		self.seed = Seed(self.cfg, ret)
-		self.ssdata.chksum = a
-		self.ssdata.b58seed = b
+		self.seed = Seed(self.cfg, seed_bin=ret)
+		self.ssdata.chksum = chksum
+		self.ssdata.b58seed = b58_seed
 
 		self.check_usr_seed_len()
 

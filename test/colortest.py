@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 
 """
 test/colortest.py: test color handling for the MMGen suite
@@ -39,9 +39,10 @@ def test_color():
 
 	from mmgen.color import orange
 	for t, c in (
-			('rxvt', 8),
 			('xterm', 8),
-			('rxvt-unicode', 88),
+			('rxvt', 8),
+			('rxvt-88color', 88),
+			('rxvt-256color', 256),
 			('screen-256color', 256),
 			('xterm-256color', 256)):
 		ret = get_terminfo_colors(t)

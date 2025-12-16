@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -18,7 +18,7 @@ from pathlib import PurePath
 sys.path[0] = str(PurePath(*PurePath(__file__).parts[:-3]))
 
 from mmgen.cfg import Config, gc
-from mmgen.util import msg, die, oneshot_warning, async_run
+from mmgen.util import msg, die, oneshot_warning
 from mmgen.protocol import init_proto
 from mmgen.daemon import CoinDaemon
 
@@ -43,6 +43,7 @@ opts_data = {
 -m, --mainnet-only   Perform operations for mainnet daemons only
 -n, --no-daemonize   Don't fork daemon to background
 -p, --port-shift=    Shift the RPC port by this number
+-r, --remove-datadir Remove the datadir(s) after stopping the daemon(s)
 -s, --get-state      Get the state of the daemon(s) and exit
 -t, --testing        Testing mode.  Print commands but don't execute them
 -q, --quiet          Produce quieter output
@@ -67,8 +68,8 @@ Valid network IDs: {nid}, {xmrw_nid}, all, no_xmr
 }
 
 class warn_missing_exec(oneshot_warning):
-	color = 'nocolor'
-	message = 'daemon executable {!r} not found on this system!'
+	color = 'yellow'
+	message = 'missing executable {!r}'
 
 def run(network_id=None, proto=None, daemon_id=None, missing_exec_ok=False):
 
@@ -99,14 +100,15 @@ def run(network_id=None, proto=None, daemon_id=None, missing_exec_ok=False):
 		return
 
 	d.debug = d.debug or cfg.debug
-	d.wait = not cfg.no_wait
+	d.wait = cfg.remove_datadir or not cfg.no_wait
 
 	if missing_exec_ok:
 		try:
 			d.get_exec_version_str()
 		except Exception as e:
 			if not cfg.quiet:
-				msg(str(e))
+				if cfg.verbose:
+					msg(str(e))
 				warn_missing_exec(div=d.exec_fn, fmt_args=(d.exec_fn,))
 			return
 	if cfg.print_version:
@@ -117,10 +119,10 @@ def run(network_id=None, proto=None, daemon_id=None, missing_exec_ok=False):
 		for cmd in d.start_cmds if action == 'start' else [d.stop_cmd]:
 			print(' '.join(cmd))
 	else:
-		if action == 'stop' and hasattr(d, 'rpc'):
-			async_run(d.rpc.stop_daemon(quiet=cfg.quiet))
-		else:
-			d.cmd(action, quiet=cfg.quiet)
+		d.cmd(action, quiet=cfg.quiet)
+		if action == 'stop' and cfg.remove_datadir:
+			cfg._util.vmsg(f'Removing ‘{d.datadir}’')
+			d.remove_datadir()
 
 def main():
 
@@ -149,4 +151,4 @@ def main():
 		for network_id in ids:
 			run(network_id=network_id.lower())
 
-cfg = Config(opts_data=opts_data)
+cfg = Config(opts_data=opts_data, init_opts={'skip_cfg_file': True})

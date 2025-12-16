@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -44,8 +44,7 @@ class bip39(baseconv):
 		160: bc(5, 15),
 		192: bc(6, 18),
 		224: bc(7, 21),
-		256: bc(8, 24),
-	}
+		256: bc(8, 24)}
 
 	def __init__(self, wl_id='bip39'):
 		assert wl_id == 'bip39', "initialize with 'bip39' for compatibility with baseconv API"
@@ -54,25 +53,25 @@ class bip39(baseconv):
 		self.wl_id = 'bip39'
 
 	@classmethod
-	def nwords2seedlen(cls, nwords, in_bytes=False, in_hex=False):
+	def nwords2seedlen(cls, nwords, /, *, in_bytes=False, in_hex=False):
 		for k, v in cls.constants.items():
 			if v.mn_len == nwords:
 				return k//8 if in_bytes else k//4 if in_hex else k
 		die('MnemonicError', f'{nwords!r}: invalid word length for BIP39 mnemonic')
 
 	@classmethod
-	def seedlen2nwords(cls, seed_len, in_bytes=False, in_hex=False):
+	def seedlen2nwords(cls, seed_len, /, *, in_bytes=False, in_hex=False):
 		seed_bits = seed_len * 8 if in_bytes else seed_len * 4 if in_hex else seed_len
 		try:
 			return cls.constants[seed_bits].mn_len
 		except Exception as e:
 			raise ValueError(f'{seed_bits!r}: invalid seed length for BIP39 mnemonic') from e
 
-	def tohex(self, words_arg, pad=None):
+	def tohex(self, words_arg, /, *, pad=None):
 		return self.tobytes(words_arg, pad=pad).hex()
 
-	def tobytes(self, words_arg, pad=None):
-		assert isinstance(words_arg, (list, tuple)), 'words_arg must be list or tuple'
+	def tobytes(self, words_arg, /, *, pad=None):
+		assert isinstance(words_arg, list | tuple), 'words_arg must be list or tuple'
 		assert pad in (None, 'seed'), f"{pad}: invalid 'pad' argument (must be None or 'seed')"
 
 		wl = self.digits
@@ -105,11 +104,11 @@ class bip39(baseconv):
 
 		return seed_bytes
 
-	def fromhex(self, hexstr, pad=None, tostr=False):
+	def fromhex(self, hexstr, /, *, pad=None, tostr=False):
 		assert is_hex_str(hexstr), 'seed data not a hexadecimal string'
 		return self.frombytes(bytes.fromhex(hexstr), pad=pad, tostr=tostr)
 
-	def frombytes(self, seed_bytes, pad=None, tostr=False):
+	def frombytes(self, seed_bytes, /, *, pad=None, tostr=False):
 		assert tostr is False, "'tostr' must be False for 'bip39'"
 		assert pad in (None, 'seed'), f"{pad}: invalid 'pad' argument (must be None or 'seed')"
 
@@ -128,15 +127,14 @@ class bip39(baseconv):
 
 		return tuple(wl[int(res[i*11:(i+1)*11], 2)] for i in range(c.mn_len))
 
-	def generate_seed(self, words_arg, passwd=''):
+	def generate_seed(self, words_arg, /, *, passwd=''):
 
 		self.tohex(words_arg) # validate
 
-		from cryptography.hazmat.primitives import hashes
-		from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-		return PBKDF2HMAC(
-			algorithm  = hashes.SHA512(),
-			length     = 64,
+		from hashlib import pbkdf2_hmac
+		return pbkdf2_hmac(
+			hash_name  = 'sha512',
+			password   = ' '.join(words_arg).encode(),
 			salt       = b'mnemonic' + passwd.encode(),
-			iterations = 2048
-		).derive(' '.join(words_arg).encode())
+			iterations = 2048,
+			dklen      = 64)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -17,20 +17,19 @@ from collections import namedtuple
 
 from ..proto.btc.common import b58a
 
-from ..util import capfirst
+from ..util import die, capfirst
 
 tx_priorities = {
 	1: 'low',
 	2: 'normal',
 	3: 'high',
-	4: 'highest'
-}
+	4: 'highest'}
 
 uargs = namedtuple('xmrwallet_uargs', [
 	'infile',
 	'wallets',
 	'spec',
-])
+	'compat_call'])
 
 uarg_info = (
 	lambda e, hp: {
@@ -42,8 +41,7 @@ uarg_info = (
 		'label_spec':      e('WALLET:ACCOUNT:ADDRESS,"label text"', r'(\d+):(\d+):(\d+),(.*)'),
 	})(
 		namedtuple('uarg_info_entry', ['annot','pat']),
-		r'(?:[^:]+):(?:\d+)'
-	)
+		r'(?:[^:]+):(?:\d+)')
 
 # canonical op names mapped to their respective modules:
 op_names = {
@@ -65,14 +63,15 @@ op_names = {
 	'submit':              'submit',
 	'resubmit':            'submit',
 	'abort':               'submit',
+	'dump_data':           'dump',
+	'dump_json':           'dump',
 	'dump':                'dump',
 	'restore':             'restore',
 	'export_outputs':      'export',
 	'export_outputs_sign': 'export',
 	'import_outputs':      'import',
 	'import_key_images':   'import',
-	'wallet':              'wallet', # virtual class
-}
+	'wallet':              'wallet'} # virtual class
 
 kafile_arg_ops = (
 	'create',
@@ -85,6 +84,8 @@ kafile_arg_ops = (
 	'transfer',
 	'sweep',
 	'sweep_all',
+	'dump_data',
+	'dump_json',
 	'dump',
 	'restore')
 
@@ -113,5 +114,19 @@ def op_cls(op_name):
 	cls.name = op_name
 	return cls
 
-def op(op, cfg, infile, wallets, spec=None):
-	return op_cls(op.replace('-', '_'))(cfg, uargs(infile, wallets, spec))
+def op(op, cfg, infile, wallets, *, spec=None, compat_call=False):
+	if compat_call or (cfg.compat if cfg.compat is not None else cfg.xmrwallet_compat):
+		if cfg.wallet_dir and not cfg.offline:
+			die(1, '--wallet-dir cannot be specified in xmrwallet compatibility mode')
+		from ..tw.ctl import TwCtl
+		from ..cfg import Config
+		twctl_cls = cfg._proto.base_proto_subclass(TwCtl, 'tw.ctl')
+		cfg = Config({
+			'_clone': cfg,
+			'compat': True,
+			'xmrwallet_compat': True} | ({} if cfg.offline else {
+				'no_start_wallet_daemon': cfg.no_start_wallet_daemon or compat_call,
+				'daemon': cfg.daemon or cfg.monero_daemon,
+				'watch_only': cfg.watch_only or cfg.autosign or bool(cfg.autosign_mountpoint),
+				'wallet_dir': twctl_cls.get_tw_dir(cfg, cfg._proto)}))
+	return op_cls(op)(cfg, uargs(infile, wallets, spec, compat_call))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -30,38 +30,72 @@ def die_pause(ev=0, s=''):
 	input('Press ENTER to exit')
 	sys.exit(ev)
 
-# monkey-patch function for monero-python: permits its use with pycryptodome (e.g. MSYS2)
-# instead of the expected pycryptodomex
-def load_cryptodomex():
+def load_fake_cryptodome():
+	import hashlib
 	try:
-		import Cryptodome # cryptodomex
-	except ImportError:
-		try:
-			import Crypto # cryptodome
-		except ImportError:
-			die(2, 'Unable to import either the ‘pycryptodomex’ or ‘pycryptodome’ package')
-		else:
-			sys.modules['Cryptodome'] = Crypto
+		hashlib.new('keccak-256')
+	except ValueError:
+		return False
 
-# called with no arguments by pyethereum.utils:
+	class FakeHash:
+		class keccak:
+			def new(data=b'', digest_bits=256):
+				assert digest_bits == 256
+				return hashlib.new('keccak-256', data=data)
+
+	sys.modules['Cryptodome.Hash'] = FakeHash
+	sys.modules['Crypto.Hash'] = FakeHash
+	return True
+
+def cffi_override_fixup():
+	from cffi import FFI
+	class FFI_override:
+		def cdef(self, csource, *, override=False, packed=False, pack=None):
+			self._cdef(csource, override=True, packed=packed, pack=pack)
+	FFI.cdef = FFI_override.cdef
+
+# monkey-patch function: makes modules pycryptodome and pycryptodomex available to packages that
+# expect them for the keccak256 function (monero-python, eth-keys), regardless of which one is
+# installed on the system
+#
+# if the hashlib keccak256 function is available (>=OpenSSL 3.2, >=Python 3.13), it’s used instead
+# and loaded as Crypto[dome].Hash via load_fake_cryptodome()
+def load_cryptodome(called=[]):
+	if not called:
+		if not load_fake_cryptodome():
+			cffi_override_fixup()
+			try:
+				import Crypto # Crypto == pycryptodome
+			except ImportError:
+				try:
+					import Cryptodome # Crypto == pycryptodome
+				except ImportError:
+					die(2, 'Unable to import the ‘pycryptodome’ or ‘pycryptodomex’ package')
+				else:
+					sys.modules['Crypto'] = Cryptodome # Crypto == pycryptodome
+			else:
+				sys.modules['Cryptodome'] = Crypto # Cryptodome == pycryptodomex
+		called.append(True)
+
+def get_hashlib_keccak():
+	import hashlib
+	try:
+		hashlib.new('keccak-256')
+	except ValueError:
+		return False
+	return lambda data: hashlib.new('keccak-256', data)
+
+# called with no arguments by proto.eth.tx.transaction:
 def get_keccak(cfg=None, cached_ret=[]):
 
 	if not cached_ret:
 		if cfg and cfg.use_internal_keccak_module:
 			cfg._util.qmsg('Using internal keccak module by user request')
 			from .contrib.keccak import keccak_256
-		else:
-			try:
-				from Cryptodome.Hash import keccak
-			except ImportError as e:
-				try:
-					from Crypto.Hash import keccak
-				except ImportError as e2:
-					msg(f'{e2} and {e}')
-					die('MMGenImportError',
-						'Please install the ‘pycryptodome’ or ‘pycryptodomex’ package on your system')
-			def keccak_256(data):
-				return keccak.new(data=data, digest_bytes=32)
+		elif not (keccak_256 := get_hashlib_keccak()):
+			load_cryptodome()
+			from Crypto.Hash import keccak
+			keccak_256 = lambda data: keccak.new(data=data, digest_bytes=32)
 		cached_ret.append(keccak_256)
 
 	return cached_ret[0]
@@ -87,7 +121,7 @@ bytespec_map = (
 	('E',  1152921504606846976),
 )
 
-def int2bytespec(n, spec, fmt, print_sym=True, strip=False, add_space=False):
+def int2bytespec(n, spec, fmt, *, print_sym=True, strip=False, add_space=False):
 
 	def spec2int(spec):
 		for k, v in bytespec_map:
@@ -108,8 +142,8 @@ def int2bytespec(n, spec, fmt, print_sym=True, strip=False, add_space=False):
 			+ ((' ' if add_space else '') + spec if print_sym else ''))
 
 def parse_bytespec(nbytes):
-	m = re.match(r'([0123456789.]+)(.*)', nbytes)
-	if m:
+
+	if m := re.match(r'([0123456789.]+)(.*)', nbytes):
 		if m.group(2):
 			for k, v in bytespec_map:
 				if k == m.group(2):
@@ -123,21 +157,28 @@ def parse_bytespec(nbytes):
 
 	die(1, f'{nbytes!r}: invalid byte specifier')
 
-def format_elapsed_days_hr(t, now=None, cached={}):
+def format_elapsed_days_hr(t, *, now=None, cached={}):
 	e = int((now or time.time()) - t)
 	if not e in cached:
 		days = abs(e) // 86400
 		cached[e] = f'{days} day{suf(days)} ' + ('ago' if e > 0 else 'in the future')
 	return cached[e]
 
-def format_elapsed_hr(t, now=None, cached={}, rel_now=True, show_secs=False):
+def format_elapsed_hr(
+		t,
+		*,
+		now        = None,
+		cached     = {},
+		rel_now    = True,
+		show_secs  = False,
+		future_msg = 'in the future'):
 	e = int((now or time.time()) - t)
 	key = f'{e}:{rel_now}:{show_secs}'
 	if not key in cached:
 		def add_suffix():
 			return (
 				((' ago'           if rel_now else '') if e > 0 else
-				(' in the future' if rel_now else ' (negative elapsed)'))
+				(f' {future_msg}' if rel_now else ' (negative elapsed)'))
 					if (abs_e if show_secs else abs_e // 60) else
 				('just now' if rel_now else ('0 ' + ('seconds' if show_secs else 'minutes')))
 			)
@@ -155,7 +196,7 @@ def format_elapsed_hr(t, now=None, cached={}, rel_now=True, show_secs=False):
 		cached[key] = ' '.join(f'{n} {desc}{suf(n)}' for desc, n in data if n) + add_suffix()
 	return cached[key]
 
-def pretty_format(s, width=80, pfx=''):
+def pretty_format(s, *, width=80, pfx=''):
 	out = []
 	while s:
 		if len(s) <= width:
@@ -166,7 +207,7 @@ def pretty_format(s, width=80, pfx=''):
 		s = s[i+1:]
 	return pfx + ('\n'+pfx).join(out)
 
-def block_format(data, gw=2, cols=8, line_nums=None, data_is_hex=False):
+def block_format(data, *, gw=2, cols=8, line_nums=None, data_is_hex=False):
 	assert line_nums in (None, 'hex', 'dec'), "'line_nums' must be one of None, 'hex' or 'dec'"
 	ln_fs = '{:06x}: ' if line_nums == 'hex' else '{:06}: '
 	bytes_per_chunk = gw
@@ -180,8 +221,8 @@ def block_format(data, gw=2, cols=8, line_nums=None, data_is_hex=False):
 			for i in range(nchunks)
 	).rstrip() + '\n'
 
-def pretty_hexdump(data, gw=2, cols=8, line_nums=None):
-	return block_format(data.hex(), gw, cols, line_nums, data_is_hex=True)
+def pretty_hexdump(data, *, gw=2, cols=8, line_nums=None):
+	return block_format(data.hex(), gw=gw, cols=cols, line_nums=line_nums, data_is_hex=True)
 
 def decode_pretty_hexdump(data):
 	pat = re.compile(fr'^[{hexdigits}]+:\s+')
@@ -191,3 +232,60 @@ def decode_pretty_hexdump(data):
 	except:
 		msg('Data not in hexdump format')
 		return False
+
+def cliargs_convert(args):
+
+	# return str instead of float for input into JSON-RPC
+	def float_parser(n):
+		return n
+
+	import json
+	def gen():
+		for arg in args:
+			try:
+				yield json.loads(arg, parse_float=float_parser) # list, dict, bool, int, null, float
+			except json.decoder.JSONDecodeError:
+				yield arg # arbitrary string
+
+	return tuple(gen())
+
+def port_in_use(port):
+	import socket
+	try:
+		socket.create_connection(('localhost', port)).close()
+	except:
+		return False
+	else:
+		return True
+
+class ExpInt(int):
+	'encode or parse an integer in exponential notation with specified precision'
+
+	max_prec = 10
+
+	def __new__(cls, spec, *, prec):
+		assert 0 < prec < cls.max_prec
+		cls.prec = prec
+
+		from .util import is_int
+		if is_int(spec):
+			return int.__new__(cls, spec)
+		else:
+			assert isinstance(spec, str), f'ExpInt: {spec!r}: not a string!'
+			assert len(spec) >= 3, f'ExpInt: {spec!r}: invalid specifier'
+			val, exp = spec.split('e')
+			assert is_int(val) and is_int(exp)
+			return int.__new__(cls, val + '0' * int(exp))
+
+	@property
+	def trunc(self):
+		s = str(self)
+		return int(s[:self.prec] + '0' * (len(s) - self.prec))
+
+	@property
+	def enc(self):
+		s = str(self)
+		s_len = len(s)
+		digits = s[:min(s_len, self.prec)].rstrip('0')
+		ret = '{}e{}'.format(digits, s_len - len(digits))
+		return ret if len(ret) < s_len else s

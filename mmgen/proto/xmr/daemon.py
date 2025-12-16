@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -19,7 +19,7 @@ from ...util import list_gen, die, contains_any
 from ...daemon import CoinDaemon, RPCDaemon, _nw, _dd
 
 class monero_daemon(CoinDaemon):
-	daemon_data = _dd('Monero', 18003004, '0.18.3.4-release')
+	daemon_data = _dd('Monero', 18004003, '0.18.4.3-release')
 	networks = ('mainnet', 'testnet')
 	exec_fn = 'monerod'
 	testnet_dir = 'stagenet'
@@ -29,8 +29,7 @@ class monero_daemon(CoinDaemon):
 	datadirs = {
 		'linux': [gc.home_dir, '.bitmonero'],
 		'darwin': [gc.home_dir, '.bitmonero'],
-		'win32': ['/', 'c', 'ProgramData', 'bitmonero']
-	}
+		'win32': ['/', 'c', 'ProgramData', 'bitmonero']}
 
 	def init_datadir(self):
 		self.logdir = super().init_datadir()
@@ -84,7 +83,7 @@ class monero_daemon(CoinDaemon):
 class MoneroWalletDaemon(RPCDaemon):
 
 	master_daemon = 'monero_daemon'
-	rpc_type = 'Monero wallet'
+	rpc_desc = 'Monero wallet'
 	exec_fn = 'monero-wallet-rpc'
 	coin = 'XMR'
 	new_console_mswin = True
@@ -104,6 +103,7 @@ class MoneroWalletDaemon(RPCDaemon):
 			self,
 			cfg,
 			proto,
+			*,
 			wallet_dir  = None,
 			test_suite  = False,
 			user        = None,

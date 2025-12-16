@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -47,6 +47,7 @@ _wd('words',        'MMGenMnemonic',     'mmwords', 'mnemonic',   False, ('mmwor
 }
 
 def get_wallet_data(
+		*,
 		wtype       = None,
 		fmt_code    = None,
 		ext         = None,
@@ -73,6 +74,7 @@ def get_wallet_data(
 
 def get_wallet_cls(
 		wtype       = None,
+		*,
 		fmt_code    = None,
 		ext         = None,
 		die_on_fail = False):
@@ -111,6 +113,7 @@ def _get_me(modname):
 
 def Wallet(
 	cfg,
+	*,
 	fn            = None,
 	ss            = None,
 	seed_bin      = None,
@@ -145,7 +148,7 @@ def Wallet(
 				die(1, f'{in_fmt}: --in-fmt parameter does not match extension of input file')
 			me = _get_me(wd.type)
 		else:
-			fn = ','.join(cfg.hidden_incog_input_params.split(',')[:-1]) # permit comma in filename
+			fn = cfg.hidden_incog_input_params.rsplit(',', 1)[0] # permit comma in filename
 			me = _get_me('incog_hidden')
 		from ..filename import MMGenFile
 		me.infile = MMGenFile(fn, subclass=type(me))

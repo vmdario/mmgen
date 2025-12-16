@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -28,6 +28,8 @@ class OpCreate(OpWallet):
 		if self.cfg.restore_height != 'current':
 			if int(self.cfg.restore_height or 0) < 0:
 				die(1, f'{self.cfg.restore_height}: invalid value for --restore-height (less than zero)')
+		if self.cfg.compat:
+			self.cfg.wallet_dir.mkdir(parents=True, exist_ok=True)
 
 	async def process_wallet(self, d, fn, last):
 		msg_r('') # for pexpect
@@ -68,7 +70,7 @@ class OpCreateOffline(OpCreate):
 		vkal = ViewKeyAddrList(
 			cfg       = self.cfg,
 			proto     = self.proto,
-			addrfile  = None,
+			infile    = None,
 			addr_idxs = self.uargs.wallets,
 			seed      = self.seed_src.seed,
 			skip_chksum_msg = True)
@@ -78,7 +80,7 @@ class OpCreateOffline(OpCreate):
 		for f in Path(self.asi.xmr_dir).iterdir():
 			if f.name.endswith(vkf.ext):
 				from ...fileutil import shred_file
-				msg(f"\nShredding old viewkey-address file '{f}'")
-				shred_file(f, verbose=self.cfg.verbose)
+				msg(f'\nShredding old viewkey-address file ‘{f}’')
+				shred_file(self.cfg, f, iterations=15)
 
 		vkf.write(outdir=self.asi.xmr_dir)

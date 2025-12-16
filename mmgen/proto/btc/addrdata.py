@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -22,10 +22,9 @@ class BitcoinTwAddrData(TwAddrData):
 			Your 'wallet.dat' file appears to have been altered by a non-{proj} program.
 			Please restore your tracking wallet from a backup or create a new one and
 			re-import your addresses.
-		"""
-	}
+		"""}
 
-	async def get_tw_data(self, twctl=None):
+	async def get_tw_data(self, *, twctl=None):
 		self.cfg._util.vmsg('Getting address data from tracking wallet')
 		c = self.rpc
 		if 'label_api' in c.caps:

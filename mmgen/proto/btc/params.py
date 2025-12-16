@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -26,9 +26,10 @@ class mainnet(CoinProtocol.Secp256k1): # chainparams.cpp
 	addr_len        = 20
 	wif_ver_num     = {'std': '80'}
 	mmtypes         = ('L', 'C', 'S', 'B')
+	preferred_mmtypes  = ('B', 'S', 'C')
 	dfl_mmtype      = 'L'
 	coin_amt        = 'BTCAmt'
-	max_tx_fee      = '0.003'
+	max_tx_fee      = 0.003
 	sighash_type    = 'ALL'
 	block0          = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'
 	forks           = [
@@ -50,10 +51,23 @@ class mainnet(CoinProtocol.Secp256k1): # chainparams.cpp
 	diff_adjust_interval = 2016
 	max_halvings    = 64
 	start_subsidy   = 50
-	ignore_daemon_version = False
 	max_int         = 0xffffffff
+	max_op_return_data_len = 4096
+	address_reuse_ok = False
 
-	def encode_wif(self, privbytes, pubkey_type, compressed): # input is preprocessed hex
+	coin_cfg_opts = (
+		'daemon_id',
+		'ignore_daemon_version',
+		'rpc_host',
+		'rpc_port',
+		'rpc_user',
+		'rpc_password',
+		'tw_name',
+		'max_tx_fee',
+		'cashaddr',
+	)
+
+	def encode_wif(self, privbytes, pubkey_type, *, compressed): # input is preprocessed
 		assert len(privbytes) == self.privkey_len, f'{len(privbytes)} bytes: incorrect private key length!'
 		assert pubkey_type in self.wif_ver_bytes, f'{pubkey_type!r}: invalid pubkey_type'
 		return b58chk_encode(
@@ -66,10 +80,13 @@ class mainnet(CoinProtocol.Secp256k1): # chainparams.cpp
 		vlen = self.wif_ver_bytes_len or self.get_wif_ver_bytes_len(key_data)
 		key = key_data[vlen:]
 
-		if len(key) == self.privkey_len + 1:
-			assert key[-1] == 0x01, f'{key[-1]!r}: invalid compressed key suffix byte'
-		elif len(key) != self.privkey_len:
-			raise ValueError(f'{len(key)}: invalid key length')
+		match len(key):
+			case x if x == self.privkey_len + 1:
+				assert key[-1] == 0x01, f'{key[-1]!r}: invalid compressed key suffix byte'
+			case self.privkey_len:
+				pass
+			case x:
+				raise ValueError(f'{x}: invalid key length')
 
 		return decoded_wif(
 			sec         = key[:self.privkey_len],

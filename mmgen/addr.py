@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ addr: MMGen address-related types
 from collections import namedtuple
 
 from .objmethods import HiliteStr, InitErrors, MMGenObject
-from .obj import ImmutableAttr, MMGenIdx, get_obj
+from .obj import ImmutableAttr, MMGenIdx, Int, get_obj
 from .seed import SeedID
 from . import color as color_mod
 
@@ -50,11 +50,12 @@ class MMGenAddrType(HiliteStr, InitErrors, MMGenObject):
 		'C': ati('compressed','std', True, 'p2pkh',   'p2pkh',   'wif', (), 'Compressed P2PKH address'),
 		'S': ati('segwit',    'std', True, 'segwit',  'p2sh',    'wif', (), 'Segwit P2SH-P2WPKH address'),
 		'B': ati('bech32',    'std', True, 'bech32',  'bech32',  'wif', (), 'Native Segwit (Bech32) address'),
+		'X': ati('bech32x',   'std', True, 'p2pkh',   'bech32',  'wif', (), 'Cross-chain Bech32 address'),
 		'E': ati('ethereum',  'std', False,'ethereum','p2pkh',   'privkey', ('wallet_passwd',),'Ethereum address'),
 		'Z': ati('zcash_z','zcash_z',False,'zcash_z', 'zcash_z', 'wif',     ('viewkey',),      'Zcash z-address'),
-		'M': ati('monero', 'monero', False,'monero',  'monero',  'spendkey',('viewkey','wallet_passwd'),'Monero address'),
-	}
-	def __new__(cls, proto, id_str, errmsg=None):
+		'M': ati('monero', 'monero', False,'monero',  'monero',  'spendkey',('viewkey','wallet_passwd'),'Monero address')}
+
+	def __new__(cls, proto, id_str, *, errmsg=None):
 		if isinstance(id_str, cls):
 			return id_str
 		try:
@@ -92,6 +93,10 @@ class MMGenPasswordType(MMGenAddrType):
 class AddrIdx(MMGenIdx):
 	max_digits = 7
 
+class MoneroIdx(Int):
+	max_digits = 5
+	min_val = 0
+
 def is_addr_idx(s):
 	return get_obj(AddrIdx, n=s, silent=True, return_bool=True)
 
@@ -99,7 +104,7 @@ class AddrListID(HiliteStr, InitErrors, MMGenObject):
 	width = 10
 	trunc_ok = False
 	color = 'yellow'
-	def __new__(cls, sid=None, mmtype=None, proto=None, id_str=None):
+	def __new__(cls, *, sid=None, mmtype=None, proto=None, id_str=None):
 		try:
 			if id_str:
 				a, b = id_str.split(':')
@@ -110,17 +115,17 @@ class AddrListID(HiliteStr, InitErrors, MMGenObject):
 					mmtype = MMGenPasswordType(proto=proto, id_str=b)
 			else:
 				assert isinstance(sid, SeedID), f'{sid!r} not a SeedID instance'
-				if not isinstance(mmtype, (MMGenAddrType, MMGenPasswordType)):
+				if not isinstance(mmtype, MMGenAddrType | MMGenPasswordType):
 					raise ValueError(f'{mmtype!r}: not an instance of MMGenAddrType or MMGenPasswordType')
 			me = str.__new__(cls, sid+':'+mmtype)
 			me.sid = sid
 			me.mmtype = mmtype
 			return me
 		except Exception as e:
-			return cls.init_fail(e, f'sid={sid}, mmtype={mmtype}')
+			return cls.init_fail(e, f'sid={sid}, mmtype={mmtype}, id_str={id_str}')
 
 def is_addrlist_id(proto, s):
-	return get_obj(AddrListID, proto=proto, id_str=s, silent=False, return_bool=True)
+	return get_obj(AddrListID, proto=proto, id_str=s, silent=True, return_bool=True)
 
 class MMGenID(HiliteStr, InitErrors, MMGenObject):
 	color = 'orange'
@@ -128,16 +133,40 @@ class MMGenID(HiliteStr, InitErrors, MMGenObject):
 	trunc_ok = False
 	def __new__(cls, proto, id_str):
 		try:
-			ss = str(id_str).split(':')
-			assert len(ss) in (2, 3), 'not 2 or 3 colon-separated items'
-			t = proto.addr_type((ss[1], proto.dfl_mmtype)[len(ss)==2])
-			me = str.__new__(cls, f'{ss[0]}:{t}:{ss[-1]}')
-			me.sid = SeedID(sid=ss[0])
-			me.idx = AddrIdx(ss[-1])
-			me.mmtype = t
-			assert t in proto.mmtypes, f'{t}: invalid address type for {proto.cls_name}'
-			me.al_id = str.__new__(AddrListID, me.sid+':'+me.mmtype) # checks already done
-			me.sort_key = f'{me.sid}:{me.mmtype}:{me.idx:0{me.idx.max_digits}}'
+			match id_str.split(':', 2):
+				case [sid, mmtype, idx]:
+					assert mmtype in proto.mmtypes, f'{mmtype}: invalid address type for {proto.cls_name}'
+				case [sid, idx]:
+					mmtype = proto.dfl_mmtype
+				case _:
+					raise ValueError('not 2 or 3 colon-separated items')
+			if '-' in idx: # extended Monero ID
+				assert proto.coin == 'XMR', 'extended MMGen IDs supported for XMR only'
+				assert id_str.count(':') == 2, 'mmtype letter required for extended MMGen IDs'
+				me = str.__new__(cls, id_str)
+				idx, ext = idx.split('-', 1)
+				me.acct_idx, me.addr_idx = [MoneroIdx(e) for e in ext.split('/', 1)]
+				me.acct_id = f'{sid}:{mmtype}:{idx}:{me.acct_idx}'
+			else:
+				ext = None
+				me = str.__new__(cls, f'{sid}:{mmtype}:{idx}')
+			me.sid = SeedID(sid=sid)
+			me.mmtype = proto.addr_type(mmtype)
+			me.idx = AddrIdx(idx)
+			me.al_id = str.__new__(AddrListID, me.sid + ':' + me.mmtype) # checks already done
+			if ext:
+				me.acct_sort_key = '{}:{}:{:0{w1}}:{:0{w2}}'.format(
+					me.sid,
+					me.mmtype,
+					me.idx,
+					me.acct_idx,
+					w1 = me.idx.max_digits,
+					w2 = MoneroIdx.max_digits)
+				me.sort_key = me.acct_sort_key + ':{:0{w2}}'.format(
+					me.addr_idx,
+					w2 = MoneroIdx.max_digits)
+			else:
+				me.sort_key = '{}:{}:{:0{w}}'.format(me.sid, me.mmtype, me.idx, w=me.idx.max_digits)
 			me.proto = proto
 			return me
 		except Exception as e:
@@ -172,7 +201,7 @@ class CoinAddr(HiliteStr, InitErrors, MMGenObject):
 			me.proto = proto
 			return me
 		except Exception as e:
-			return cls.init_fail(e, addr, objname=f'{proto.cls_name} address')
+			return cls.init_fail(e, addr, objname=f'{proto.name} {proto.cls_name} address')
 
 	@property
 	def parsed(self):
@@ -182,20 +211,20 @@ class CoinAddr(HiliteStr, InitErrors, MMGenObject):
 
 	# reimplement some HiliteStr methods:
 	@classmethod
-	def fmtc(cls, s, width, color=False):
-		return super().fmtc(s=s[:width-2]+'..' if len(s) > width else s, width=width, color=color)
+	def fmtc(cls, s, width, /, *, color=False):
+		return super().fmtc(s[:width-2]+'..' if len(s) > width else s, width, color=color)
 
-	def fmt(self, view_pref, width, color=False):
+	def fmt(self, view_pref, width, /, *, color=False):
 		s = self.views[view_pref]
-		return super().fmtc(f'{s[:width-2]}..' if len(s) > width else s, width=width, color=color)
+		return super().fmtc(f'{s[:width-2]}..' if len(s) > width else s, width, color=color)
 
-	def hl(self, view_pref, color=True):
+	def hl(self, view_pref, /, *, color=True):
 		return getattr(color_mod, self.color)(self.views[view_pref]) if color else self.views[view_pref]
 
 def is_coin_addr(proto, s):
 	return get_obj(CoinAddr, proto=proto, addr=s, silent=True, return_bool=True)
 
-class TokenAddr(CoinAddr):
+class ContractAddr(CoinAddr):
 	color = 'blue'
 
 def ViewKey(proto, viewkey_str):

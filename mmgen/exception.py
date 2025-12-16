@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -55,7 +55,7 @@ class TestSuiteException(Exception):      mmcode = 1
 class TestSuiteSpawnedScriptException(Exception): mmcode = 1
 
 # 2: yellow hl, message only
-class InvalidTokenAddress(Exception):     mmcode = 2
+class InvalidContractAddress(Exception):  mmcode = 2
 class UnrecognizedTokenSymbol(Exception): mmcode = 2
 class TokenNotInBlockchain(Exception):    mmcode = 2
 class TokenNotInWallet(Exception):        mmcode = 2
@@ -70,10 +70,14 @@ class ExtensionModuleError(Exception):    mmcode = 2
 class MoneroMMGenTXFileParseError(Exception): mmcode = 2
 class AutosignTXError(Exception):         mmcode = 2
 class MMGenImportError(Exception):        mmcode = 2
+class SwapMemoParseError(Exception):      mmcode = 2
+class SwapAssetError(Exception):          mmcode = 2
+class SwapCfgValueError(Exception):       mmcode = 2
 
 # 3: yellow hl, 'MMGen Error' + exception + message
 class RPCFailure(Exception):              mmcode = 3
 class RPCChainMismatch(Exception):        mmcode = 3
+class TxIDMismatch(Exception):            mmcode = 3
 class BadTxSizeEstimate(Exception):       mmcode = 3
 class MaxInputSizeExceeded(Exception):    mmcode = 3
 class MaxFileSizeExceeded(Exception):     mmcode = 3

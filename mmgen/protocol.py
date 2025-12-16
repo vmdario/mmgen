@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@ protocol: Coin protocol base classes and initializer
 from collections import namedtuple
 
 from .cfg import gc
+from .base_obj import Lockable
 from .objmethods import MMGenObject
 
 decoded_wif = namedtuple('decoded_wif', ['sec', 'pubkey_type', 'compressed'])
@@ -45,19 +46,24 @@ class CoinProtocol(MMGenObject):
 		'eth': proto_info('Ethereum',        4),
 		'etc': proto_info('EthereumClassic', 4),
 		'zec': proto_info('Zcash',           2),
-		'xmr': proto_info('Monero',          4)
-	}
+		'xmr': proto_info('Monero',          5),
+		'rune': proto_info('THORChain',      4)}
 
-	class Base(MMGenObject):
+	class Base(Lockable):
 		base_proto = None
 		base_proto_coin  = None
 		base_coin  = None
 		is_fork_of = None
 		chain_names = None
+		is_vm = False
+		is_evm = False
+		has_usr_fee = True
+		rpc_type = 'local'
 		networks   = ('mainnet', 'testnet', 'regtest')
 		decimal_prec = 28
+		_set_ok = ('tokensym',)
 
-		def __init__(self, cfg, coin, name, network, tokensym=None, need_amt=False):
+		def __init__(self, cfg, coin, *, name, network, tokensym=None, need_amt=False):
 			self.cfg        = cfg
 			self.coin       = coin.upper()
 			self.coin_id    = self.coin
@@ -75,14 +81,14 @@ class CoinProtocol(MMGenObject):
 			}[network]
 
 			if hasattr(self, 'wif_ver_num'):
-				self.wif_ver_bytes = {k:bytes.fromhex(v) for k, v in self.wif_ver_num.items()}
-				self.wif_ver_bytes_to_pubkey_type = {v:k for k, v in self.wif_ver_bytes.items()}
+				self.wif_ver_bytes = {k: bytes.fromhex(v) for k, v in self.wif_ver_num.items()}
+				self.wif_ver_bytes_to_pubkey_type = {v: k for k, v in self.wif_ver_bytes.items()}
 				vbs = list(self.wif_ver_bytes.values())
 				self.wif_ver_bytes_len = len(vbs[0]) if len(set(len(b) for b in vbs)) == 1 else None
 
 			if hasattr(self, 'addr_ver_info'):
-				self.addr_ver_bytes = {bytes.fromhex(k):v for k, v in self.addr_ver_info.items()}
-				self.addr_fmt_to_ver_bytes = {v:k for k, v in self.addr_ver_bytes.items()}
+				self.addr_ver_bytes = {bytes.fromhex(k): v for k, v in self.addr_ver_info.items()}
+				self.addr_fmt_to_ver_bytes = {v: k for k, v in self.addr_ver_bytes.items()}
 				self.addr_ver_bytes_len = len(list(self.addr_ver_bytes)[0])
 
 			if gc.cmd_caps:
@@ -108,11 +114,16 @@ class CoinProtocol(MMGenObject):
 				from . import amt
 				from decimal import getcontext
 				self.coin_amt = getattr(amt, self.coin_amt)
-				self.max_tx_fee = self.coin_amt(self.max_tx_fee) if hasattr(self, 'max_tx_fee') else None
+				self.max_tx_fee = self.coin_amt(str(self.max_tx_fee)) if hasattr(self, 'max_tx_fee') else None
 				getcontext().prec = self.decimal_prec
 			else:
 				self.coin_amt = None
 				self.max_tx_fee = None
+
+			self.set_cfg_opts()
+
+		def set_cfg_opts(self):
+			pass
 
 		@property
 		def dcoin(self):
@@ -137,13 +148,13 @@ class CoinProtocol(MMGenObject):
 
 		@staticmethod
 		def parse_network_id(network_id):
-			nid = namedtuple('parsed_network_id', ['coin', 'network'])
-			if network_id.endswith('_tn'):
-				return nid(network_id[:-3], 'testnet')
-			elif network_id.endswith('_rt'):
-				return nid(network_id[:-3], 'regtest')
-			else:
-				return nid(network_id, 'mainnet')
+			match network_id.rsplit('_', 1):
+				case (coin, netcode) if netcode in ('tn', 'rt'):
+					network = {'tn': 'testnet', 'rt': 'regtest'}[netcode]
+				case _:
+					coin = network_id
+					network = 'mainnet'
+			return namedtuple('parsed_network_id', ['coin', 'network'])(coin, network)
 
 		@staticmethod
 		def create_network_id(coin, network):
@@ -173,7 +184,7 @@ class CoinProtocol(MMGenObject):
 		def viewkey(self, viewkey_str):
 			raise NotImplementedError(f'{self.name} protocol does not support view keys')
 
-		def base_proto_subclass(self, cls, modname, sub_clsname=None):
+		def base_proto_subclass(self, cls, modname, *, sub_clsname=None, is_token=False):
 			"""
 			magic module loading and class selection
 			"""
@@ -181,7 +192,7 @@ class CoinProtocol(MMGenObject):
 
 			clsname = (
 				self.mod_clsname
-				+ ('Token' if self.tokensym else '')
+				+ ('Token' if self.tokensym or is_token else '')
 				+ cls.__name__)
 
 			import importlib
@@ -190,8 +201,44 @@ class CoinProtocol(MMGenObject):
 			else:
 				return getattr(importlib.import_module(modpath), clsname)
 
+	class RPC:
 
-	class Secp256k1(Base):
+		# prefixed with coin, e.g. ‘ltc_rpc_host’: refvals taken from proto class
+		coin_cfg_opts = ()
+
+		# prefixed with coin + network, e.g. ‘eth_mainnet_chain_names’: refvals taken from proto class
+		proto_cfg_opts = ()
+
+		# default vals (refvals): bool(val) must be False (val = None -> option takes no parameter)
+		ignore_daemon_version = None
+		rpc_host              = ''
+		rpc_port              = 0
+		rpc_user              = ''
+		rpc_password          = ''
+		tw_name               = ''
+		daemon_id             = ''
+
+		@classmethod
+		def get_opt_clsval(cls, cfg, opt):
+			coin, *rem = opt.split('_', 2)
+			network = rem[0] if rem[0] in init_proto(cfg, coin, return_cls=True).network_names else None
+			opt_name = '_'.join(rem[bool(network):])
+			if ((network is None and opt_name in cls.coin_cfg_opts) or
+				(network and opt_name in cls.proto_cfg_opts)):
+				# raises AttributeError on failure:
+				return getattr(init_proto(cfg, coin, network=network, return_cls=True), opt_name)
+			else:
+				raise AttributeError(f'{opt_name}: unrecognized attribute')
+
+		def set_cfg_opts(self):
+			for opt in self.cfg.__dict__:
+				if opt.startswith(self.coin.lower() + '_'):
+					res = opt.split('_', 2)[1:]
+					network = res[0] if res[0] in self.network_names else None
+					if network is None or network == self.network:
+						setattr(self, '_'.join(res[bool(network):]), getattr(self.cfg, opt))
+
+	class Secp256k1(RPC, Base):
 		"""
 		Bitcoin and Ethereum protocols inherit from this class
 		"""
@@ -209,14 +256,15 @@ class CoinProtocol(MMGenObject):
 			# Key must be non-zero and less than group order of secp256k1 curve
 			if 0 < int.from_bytes(sec, 'big') < self.secp256k1_group_order:
 				return sec
-			else: # chance of this is less than 1 in 2^127
-				from .util import die, ymsg
-				pk = int.from_bytes(sec, 'big')
-				if pk == 0: # chance of this is 1 in 2^256
+
+			# less than 1 in 2^127 probability that we get here
+			from .util import die, ymsg
+			match int.from_bytes(sec, 'big'):
+				case 0:
 					die(4, 'Private key is zero!')
-				elif pk == self.secp256k1_group_order: # ditto
+				case self.secp256k1_group_order:
 					die(4, 'Private key == secp256k1_group_order!')
-				else: # return key mod group order as the key
+				case pk: # return key (mod group order) as the key
 					if not self.cfg.test_suite:
 						ymsg(f'Warning: private key is greater than secp256k1 group order!:\n  {sec.hex()}')
 					return (pk % self.secp256k1_group_order).to_bytes(self.privkey_len, 'big')
@@ -239,6 +287,7 @@ class CoinProtocol(MMGenObject):
 def init_proto(
 		cfg,
 		coin       = None,
+		*,
 		testnet    = False,
 		regtest    = False,
 		network    = None,
@@ -315,9 +364,9 @@ def warn_trustlevel(cfg):
 		return
 
 	m = """
-		Support for coin {c!r} is EXPERIMENTAL.  The {p} project
+		Support for coin {c!r} is EXPERIMENTAL.  {a}
 		assumes no responsibility for any loss of funds you may incur.
-		This coin’s {p} testing status: {t}
+		This coin’s testing status: {t}
 		Are you sure you want to continue?
 	"""
 
@@ -332,7 +381,7 @@ def warn_trustlevel(cfg):
 			2: yellow('MEDIUM'),
 			3: green('OK'),
 		}[trust_level],
-		p = gc.proj_name)
+		a = gc.author)
 
 	if cfg.test_suite:
 		cfg._util.qmsg(warning)

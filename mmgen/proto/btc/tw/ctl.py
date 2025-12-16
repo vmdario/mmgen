@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -17,17 +17,12 @@ from ....util import msg, msg_r, rmsg, die, suf, fmt_list
 
 class BitcoinTwCtl(TwCtl):
 
-	def init_empty(self):
-		self.data = {'coin': self.proto.coin, 'addresses': {}}
-
-	def upgrade_wallet_maybe(self):
-		pass
-
-	async def rpc_get_balance(self, addr):
+	async def rpc_get_balance(self, addr, block='latest'):
 		raise NotImplementedError('not implemented')
 
+	# TODO: do check with check_import_mmid()
 	@write_mode
-	async def import_address(self, addr, label, rescan=False): # rescan is True by default, so set to False
+	async def import_address(self, addr, *, label, rescan=False):
 		if (await self.rpc.walletinfo).get('descriptors'):
 			return await self.batch_import_address([(addr, label, rescan)])
 		else:
@@ -82,15 +77,13 @@ class BitcoinTwCtl(TwCtl):
 			return b if res else tip
 
 		def gen_chunks(start, stop, tip):
-			n = start
 			if endless:
 				stop = tip
 			elif stop > tip:
 				die(1, f'{stop}: stop value is higher than chain tip')
-
-			while n <= stop:
-				yield (n, min(n+99, stop))
-				n += 100
+			while start <= stop:
+				yield (start, min(start + 99, stop))
+				start += 100
 
 		last_block = await do_scan(gen_chunks(start, stop, self.rpc.blockcount), self.rpc.blockcount)
 

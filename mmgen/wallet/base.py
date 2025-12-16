@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -40,7 +40,7 @@ class wallet(MMGenObject, metaclass=WalletMeta):
 	class WalletData(MMGenObject):
 		pass
 
-	def __init__(self,
+	def __init__(self, *,
 		in_data       = None,
 		passwd_file   = None):
 
@@ -79,7 +79,7 @@ class wallet(MMGenObject, metaclass=WalletMeta):
 			self.fmt_data = get_data_from_file(
 				self.cfg,
 				self.infile.name,
-				self.desc,
+				desc   = self.desc,
 				binary = self.file_mode=='binary')
 		elif self.in_data:
 			self.fmt_data = self.in_data
@@ -88,7 +88,7 @@ class wallet(MMGenObject, metaclass=WalletMeta):
 
 	def _get_data_from_user(self, desc):
 		from ..ui import get_data_from_user
-		return get_data_from_user(self.cfg, desc)
+		return get_data_from_user(self.cfg, desc=desc)
 
 	def _deformat_once(self):
 		self._get_data()
@@ -110,14 +110,13 @@ class wallet(MMGenObject, metaclass=WalletMeta):
 		self._format()
 		return self.fmt_data
 
-	def write_to_file(self, outdir='', desc=''):
+	def write_to_file(self, *, outdir='', desc=''):
 		self._format()
 		kwargs = {
 			'desc':     desc or self.desc,
 			'ask_tty':  self.ask_tty,
 			'no_tty':   self.no_tty,
-			'binary':   self.file_mode == 'binary'
-		}
+			'binary':   self.file_mode == 'binary'}
 
 		if outdir:
 			# write_data_to_file(): outfile with absolute path overrides self.cfg.outdir
@@ -130,7 +129,7 @@ class wallet(MMGenObject, metaclass=WalletMeta):
 			self.fmt_data,
 			**kwargs)
 
-	def check_usr_seed_len(self, bitlen=None):
+	def check_usr_seed_len(self, *, bitlen=None):
 		chk = bitlen or self.seed.bitlen
 		if self.cfg.seed_len and self.cfg.seed_len != chk:
 			die(1, f'ERROR: requested seed length ({self.cfg.seed_len}) doesn’t match seed length of source ({chk})')

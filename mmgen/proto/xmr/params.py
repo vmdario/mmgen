@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -23,8 +23,9 @@ class MoneroViewKey(HexStr):
 	color, width, hexcase = 'cyan', 64, 'lower' # FIXME - no checking performed
 
 # https://github.com/monero-project/monero/blob/master/src/cryptonote_config.h
-class mainnet(CoinProtocol.DummyWIF, CoinProtocol.Base):
+class mainnet(CoinProtocol.RPC, CoinProtocol.DummyWIF, CoinProtocol.Base):
 
+	mod_clsname    = 'Monero'
 	network_names  = _nw('mainnet', 'stagenet', None)
 	base_proto     = 'Monero'
 	base_proto_coin = 'XMR'
@@ -36,10 +37,15 @@ class mainnet(CoinProtocol.DummyWIF, CoinProtocol.Base):
 	pubkey_type    = 'monero' # required by DummyWIF
 	avg_bdi        = 120
 	privkey_len    = 32
-	mmcaps         = ('rpc',)
-	ignore_daemon_version = False
+	mmcaps         = ('rpc', 'tw')
 	coin_amt       = 'XMRAmt'
 	sign_mode      = 'standalone'
+	has_usr_fee    = False
+
+	coin_cfg_opts = (
+		'ignore_daemon_version',
+		'rpc_port',
+	)
 
 	def get_addr_len(self, addr_fmt):
 		return (64, 72)[addr_fmt == 'monero_integrated']

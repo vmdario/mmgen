@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -33,7 +33,7 @@ class wallet(wallet):
 		super().__init__(*args, **kwargs)
 
 	# logic identical to _get_hash_preset_from_user()
-	def _get_label_from_user(self, old_lbl=''):
+	def _get_label_from_user(self, *, old_lbl=''):
 		prompt = 'Enter a wallet label, or hit ENTER {}: '.format(
 			'to reuse the label {}'.format(old_lbl.hl2(encl='‘’')) if old_lbl else
 			'for no label')
@@ -60,7 +60,7 @@ class wallet(wallet):
 				lbl = self.label
 				self.cfg._util.qmsg('Using user-configured label {}'.format(lbl.hl2(encl='‘’')))
 			else: # Prompt, using old value as default
-				lbl = self._get_label_from_user(old_lbl)
+				lbl = self._get_label_from_user(old_lbl=old_lbl)
 			if (not self.cfg.keep_label) and self.op == 'pwchg_new':
 				self.cfg._util.qmsg('Label {}'.format('unchanged' if lbl == old_lbl else f'changed to {lbl!r}'))
 		elif self.label:
@@ -122,34 +122,37 @@ class wallet(wallet):
 		d1, d2, d3, d4, d5 = lines[2].split()
 		d.seed_id = d1.upper()
 		d.key_id  = d2.upper()
-		self.check_usr_seed_len(int(d3))
+		self.check_usr_seed_len(bitlen=int(d3))
 		d.pw_status, d.timestamp = d4, d5
 
-		hpdata = lines[3].split()
+		match lines[3].split():
+			case [hp_lbl, *params] if len(params) == 3:
+				d.hash_preset = hp_lbl.removesuffix(':')
+			case _:
+				raise ValueError(f'{lines[3]}: invalid hash preset line')
 
-		d.hash_preset = hp = hpdata[0][:-1]  # a string!
-		self.cfg._util.qmsg(f'Hash preset of wallet: {hp!r}')
-		if self.cfg.hash_preset and self.cfg.hash_preset != hp:
+		self.cfg._util.qmsg(f'Hash preset of wallet: {d.hash_preset!r}')
+		if self.cfg.hash_preset and self.cfg.hash_preset != d.hash_preset:
 			self.cfg._util.qmsg(f'Warning: ignoring user-requested hash preset {self.cfg.hash_preset!r}')
 
-		hash_params = tuple(map(int, hpdata[1:]))
-
-		if hash_params != self.crypto.get_hash_params(d.hash_preset):
-			msg(f'Hash parameters {" ".join(hash_params)!r} don’t match hash preset {d.hash_preset!r}')
+		if tuple(map(int, params)) != self.crypto.get_hash_params(d.hash_preset):
+			msg(f'Hash parameters {" ".join(params)!r} don’t match hash preset {d.hash_preset!r}')
 			return False
 
 		lmin, _, lmax = sorted(baseconv('b58').seedlen_map_rev) # 22, 33, 44
 		for i, key in (4, 'salt'), (5, 'enc_seed'):
-			l = lines[i].split(' ')
-			chk = l.pop(0)
-			b58_val = ''.join(l)
-
-			if len(b58_val) < lmin or len(b58_val) > lmax:
-				msg(f'Invalid format for {key} in {self.desc}: {l}')
-				return False
+			match lines[i].split(' '):
+				case [chksum, *b58_chunks]:
+					b58_val = ''.join(b58_chunks)
+					if len(b58_val) < lmin or len(b58_val) > lmax:
+						msg(f'Invalid format for {key} in {self.desc}: {lines[i]}')
+						return False
+				case _:
+					msg(f'Invalid format for {key} in {self.desc}: {lines[i]}')
+					return False
 
 			if not self.cfg._util.compare_chksums(
-					chk,
+					chksum,
 					key,
 					make_chksum_6(b58_val),
 					'computed checksum',
@@ -171,9 +174,9 @@ class wallet(wallet):
 		d.passwd = self._get_passphrase(
 			add_desc = os.path.basename(self.infile.name) if self.cfg.quiet else '')
 		key = self.crypto.make_key(d.passwd, d.salt, d.hash_preset)
-		ret = self.crypto.decrypt_seed(d.enc_seed, key, d.seed_id, d.key_id)
+		ret = self.crypto.decrypt_seed(d.enc_seed, key, seed_id=d.seed_id, key_id=d.key_id)
 		if ret:
-			self.seed = Seed(self.cfg, ret)
+			self.seed = Seed(self.cfg, seed_bin=ret)
 			return True
 		else:
 			return False

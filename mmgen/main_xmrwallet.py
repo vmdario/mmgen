@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -28,7 +28,7 @@ opts_data = {
 		'desc': """Perform various Monero wallet and transacting operations for
                    addresses in an MMGen XMR key-address file""",
 		'usage2': [
-			'[opts] create | sync | list | view | listview | dump | restore [xmr_keyaddrfile] [wallets]',
+			'[opts] create | sync | list | view | listview | dump-json | dump | restore [xmr_keyaddrfile] [wallets]',
 			'[opts] label    [xmr_keyaddrfile] LABEL_SPEC',
 			'[opts] new      [xmr_keyaddrfile] NEW_ADDRESS_SPEC',
 			'[opts] transfer [xmr_keyaddrfile] TRANSFER_SPEC',
@@ -47,6 +47,10 @@ opts_data = {
                                  When this option is in effect, filename argu-
                                  ments must be omitted, as files are located
                                  automatically.
+-c, --compat                     Adjust configuration for compatibility with
+                                 the mmgen-tx{{create,sign,send}} family of
+                                 commands.  Currently equivalent to
+                                 ‘-w {tw_dir}’
 -f, --priority=N                 Specify an integer priority ‘N’ for inclusion
                                  of a transaction in the blockchain (higher
                                  number means higher fee).  Valid parameters:
@@ -58,7 +62,7 @@ opts_data = {
 -b, --rescan-blockchain          Rescan the blockchain if wallet fails to sync
 -d, --outdir=D                   Save transaction files to directory 'D'
                                  instead of the working directory
--D, --daemon=H:P                 Connect to the monerod at {D}
+-D, --daemon=H:P                 Connect to the monerod at {dhp}
 -e, --skip-empty-accounts        Skip display of empty accounts in wallets
                                  where applicable
 -E, --skip-empty-addresses       Skip display of used empty addresses in
@@ -69,7 +73,7 @@ opts_data = {
 -P, --rescan-spent               Perform a rescan of spent outputs.  Used only
                                  with the ‘export-outputs-sign’ operation
 -R, --tx-relay-daemon=H:P[:H:P]  Relay transactions via a monerod specified by
-                                 {R}
+                                 {rdhp}
 -r, --restore-height=H           Scan from height 'H' when creating wallets.
                                  Use special value ‘current’ to create empty
                                  wallet at current blockchain height.
@@ -88,11 +92,12 @@ opts_data = {
 """
 	},
 	'code': {
-		'options': lambda cfg, s: s.format(
-			D   = xmrwallet.uarg_info['daemon'].annot,
-			R   = xmrwallet.uarg_info['tx_relay_daemon'].annot,
+		'options': lambda cfg, help_notes, s: s.format(
+			dhp = xmrwallet.uarg_info['daemon'].annot,
+			rdhp = xmrwallet.uarg_info['tx_relay_daemon'].annot,
 			cfg = cfg,
 			gc  = gc,
+			tw_dir = help_notes('tw_dir'),
 			tp  = fmt_dict(xmrwallet.tx_priorities, fmt='equal_compact')
 		),
 		'notes': lambda help_mod, s: s.format(
@@ -106,9 +111,9 @@ cfg = Config(opts_data=opts_data, init_opts={'coin':'xmr'})
 cmd_args = cfg._args
 
 if cmd_args and cfg.autosign and (
-		cmd_args[0] in (
+		cmd_args[0].replace('-', '_') in (
 			xmrwallet.kafile_arg_ops
-			+ ('export-outputs', 'export-outputs-sign', 'import-key-images', 'txview', 'txlist')
+			+ ('export_outputs', 'export_outputs_sign', 'import_key_images', 'txview', 'txlist')
 		)
 		or len(cmd_args) == 1 and cmd_args[0] in ('submit', 'resubmit', 'abort')
 	):
@@ -117,33 +122,35 @@ if cmd_args and cfg.autosign and (
 if len(cmd_args) < 2:
 	cfg._usage()
 
-op     = cmd_args.pop(0)
+usr_op = cmd_args.pop(0)
+op     = usr_op.replace('-', '_')
 infile = cmd_args.pop(0)
 wallets = spec = None
 
-if op in ('relay', 'submit', 'resubmit', 'abort'):
-	if len(cmd_args) != 0:
-		cfg._usage()
-elif op in ('txview', 'txlist'):
-	infile = [infile] + cmd_args
-elif op in ('create', 'sync', 'list', 'view', 'listview', 'dump', 'restore'): # kafile_arg_ops
-	if len(cmd_args) > 1:
-		cfg._usage()
-	wallets = cmd_args.pop(0) if cmd_args else None
-elif op in ('new', 'transfer', 'sweep', 'sweep_all', 'label'):
-	if len(cmd_args) != 1:
-		cfg._usage()
-	spec = cmd_args[0]
-elif op in ('export-outputs', 'export-outputs-sign', 'import-key-images'):
-	if not cfg.autosign:
-		die(1, f'--autosign must be used with command {op!r}')
-	if len(cmd_args) > 1:
-		cfg._usage()
-	wallets = cmd_args.pop(0) if cmd_args else None
-else:
-	die(1, f'{op!r}: unrecognized operation')
+match op:
+	case 'relay' | 'submit' | 'resubmit' | 'abort':
+		if len(cmd_args) != 0:
+			cfg._usage()
+	case 'txview' | 'txlist':
+		infile = [infile] + cmd_args
+	case 'create' | 'sync' | 'list' | 'view' | 'listview' | 'dump_json' | 'dump' | 'restore':
+		if len(cmd_args) > 1:
+			cfg._usage()
+		wallets = cmd_args.pop(0) if cmd_args else None
+	case 'new' | 'transfer' | 'sweep' | 'sweep_all' | 'label':
+		if len(cmd_args) != 1:
+			cfg._usage()
+		spec = cmd_args[0]
+	case 'export_outputs' | 'export_outputs_sign' | 'import_key_images':
+		if not cfg.autosign:
+			die(1, f'--autosign must be used with command {usr_op!r}')
+		if len(cmd_args) > 1:
+			cfg._usage()
+		wallets = cmd_args.pop(0) if cmd_args else None
+	case _:
+		die(1, f'{usr_op!r}: unrecognized operation')
 
-m = xmrwallet.op(op, cfg, infile, wallets, spec)
+m = xmrwallet.op(op, cfg, infile, wallets, spec=spec)
 
 if asyncio.run(m.main()):
 	m.post_main_success()

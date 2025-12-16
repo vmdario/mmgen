@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ def get_opt_by_substring(opt, opts):
 		from .util import die
 		die('CmdlineOptError', f'--{opt}: ambiguous option (not unique substring)')
 
-def process_uopts(opts_data, opts):
+def process_uopts(cfg, opts_data, opts, need_proto):
 
 	from .util import die
 
@@ -83,6 +83,32 @@ def process_uopts(opts_data, opts):
 					if parm:
 						die('CmdlineOptError', f'option --{_opt} requires no parameter')
 					yield (negated_opts(opts)[_opt].name, False)
+				elif (
+						need_proto
+						and (not gc.cmd_caps or gc.cmd_caps.rpc)
+						and any(opt.startswith(coin + '-') for coin in gc.rpc_coins)):
+					opt_name = opt.replace('-', '_')
+					from .protocol import init_proto
+					try:
+						refval = init_proto(cfg, opt.split('-', 1)[0], return_cls=True).get_opt_clsval(cfg, opt_name)
+					except AttributeError:
+						die('CmdlineOptError', f'--{opt}: unrecognized option')
+					else:
+						if refval is None: # None == no parm
+							if parm:
+								die('CmdlineOptError', f'option --{opt} requires no parameter')
+							yield (opt_name, True)
+						else:
+							from .cfg import conv_type
+							if parm:
+								yield (opt_name,
+									conv_type(opt_name, parm, refval, src='cmdline'))
+							else:
+								idx += 1
+								if idx == argv_len or (parm := sys.argv[idx]).startswith('-'):
+									die('CmdlineOptError', f'missing parameter for option --{opt}')
+								yield (opt_name,
+									conv_type(opt_name, parm, refval, src='cmdline'))
 				else:
 					die('CmdlineOptError', f'--{opt}: unrecognized option')
 			elif arg[0] == '-' and len(arg) > 1:
@@ -109,44 +135,50 @@ def process_uopts(opts_data, opts):
 	uargs = []
 	uopts = dict(get_uopts())
 
-	if 'sets' in opts_data:
-		for a_opt, a_val, b_opt, b_val in opts_data['sets']:
-			if a_opt in uopts:
-				u_val = uopts[a_opt]
-				if (u_val and a_val == bool) or u_val == a_val:
-					if b_opt in uopts and uopts[b_opt] != b_val:
-						die(1,
-							'Option conflict:'
-							+ '\n  --{}={}, with'.format(b_opt.replace('_', '-'), uopts[b_opt])
-							+ '\n  --{}={}\n'.format(a_opt.replace('_', '-'), uopts[a_opt]))
-					else:
-						uopts[b_opt] = b_val
-
 	return uopts, uargs
 
-cmd_opts_pat = re.compile(r'^-([a-zA-Z0-9-]), --([a-zA-Z0-9-]{2,64})(=| )(.+)')
-global_opts_pat = re.compile(r'^\t\t\t(.)(.) --([a-zA-Z0-9-]{2,64})(=| )(.+)')
+cmd_opts_v1_pat      = re.compile(r'^-([a-zA-Z0-9-]), --([a-zA-Z0-9-]{2,64})(=| )(.+)')
+
+cmd_opts_v2_pat      = re.compile(r'^\t\t\t(.)(.) -([a-zA-Z0-9-]), --([a-z0-9-]{2,64})(=| )(.+)')
+cmd_opts_v2_help_pat = re.compile(r'^\t\t\t(.)(.) (?:-([a-zA-Z0-9-]), --([a-z0-9-]{2,64})(=| ))?(.+)')
+
+global_opts_pat      = re.compile(r'^\t\t\t(.)(.) --([a-z0-9-]{2,64})(=| )(.+)')
+global_opts_help_pat = re.compile(r'^\t\t\t(.)(.) (?:--([{}a-zA-Z0-9-]{2,64})(=| ))?(.+)')
+
 opt_tuple = namedtuple('cmdline_option', ['name', 'has_parm'])
 
-def parse_opts(opts_data, opt_filter, global_opts_data, global_opts_filter):
+def parse_opts(cfg, opts_data, global_opts_data, global_filter_codes, *, need_proto):
 
-	def parse_cmd_opts_text():
+	def parse_v1():
 		for line in opts_data['text']['options'].strip().splitlines():
-			m = cmd_opts_pat.match(line)
-			if m and (not opt_filter or m[1] in opt_filter):
+			if m := cmd_opts_v1_pat.match(line):
 				ret = opt_tuple(m[2].replace('-', '_'), m[3] == '=')
 				yield (m[1], ret)
 				yield (m[2], ret)
 
-	def parse_global_opts_text():
-		for line in global_opts_data['text'].splitlines():
+	def parse_v2():
+		cmd_filter_codes = opts_data['filter_codes']
+		coin_codes = global_filter_codes.coin
+		for line in opts_data['text']['options'].splitlines():
+			m = cmd_opts_v2_pat.match(line)
+			if m and (coin_codes is None or m[1] in coin_codes) and m[2] in cmd_filter_codes:
+				ret = opt_tuple(m[4].replace('-', '_'), m[5] == '=')
+				yield (m[3], ret)
+				yield (m[4], ret)
+
+	def parse_global():
+		coin_codes = global_filter_codes.coin
+		cmd_codes = global_filter_codes.cmd
+		for line in global_opts_data['text']['options'].splitlines():
 			m = global_opts_pat.match(line)
-			if m and m[1] in global_opts_filter.coin and m[2] in global_opts_filter.cmd:
+			if m and (
+					(coin_codes is None or m[1] in coin_codes) and
+					(cmd_codes is None or m[2] in cmd_codes)):
 				yield (m[3], opt_tuple(m[3].replace('-', '_'), m[4] == '='))
 
-	opts = tuple(parse_cmd_opts_text()) + tuple(parse_global_opts_text())
+	opts = tuple((parse_v2 if 'filter_codes' in opts_data else parse_v1)()) + tuple(parse_global())
 
-	uopts, uargs = process_uopts(opts_data, dict(opts))
+	uopts, uargs = process_uopts(cfg, opts_data, dict(opts), need_proto)
 
 	return namedtuple('parsed_cmd_opts', ['user_opts', 'cmd_args', 'opts'])(
 		uopts, # dict
@@ -198,9 +230,9 @@ class Opts:
 	def __init__(
 			self,
 			cfg,
+			*,
 			opts_data,
 			init_opts,    # dict containing opts to pre-initialize
-			opt_filter,   # whitelist of opt letters; all others are skipped
 			parsed_opts,
 			need_proto):
 
@@ -208,12 +240,16 @@ class Opts:
 			raise RuntimeError(f'{len(sys.argv) - 1}: too many command-line arguments')
 
 		opts_data = opts_data or opts_data_dfl
-		self.opt_filter = opt_filter
 
-		self.global_opts_filter = self.get_global_opts_filter(need_proto)
+		self.global_filter_codes = self.get_global_filter_codes(need_proto)
 		self.opts_data = opts_data
 
-		po = parsed_opts or parse_opts(opts_data, opt_filter, self.global_opts_data, self.global_opts_filter)
+		po = parsed_opts or parse_opts(
+			cfg,
+			opts_data,
+			self.global_opts_data,
+			self.global_filter_codes,
+			need_proto = need_proto)
 
 		cfg._args = po.cmd_args
 		cfg._uopts = uopts = po.user_opts
@@ -227,8 +263,11 @@ class Opts:
 		cfg._parsed_opts = po
 		cfg._use_env = True
 		cfg._use_cfg_file = not 'skip_cfg_file' in uopts
-		# Make this available to usage()
+
+		# Make these available to usage():
 		cfg._usage_data = opts_data['text'].get('usage2') or opts_data['text']['usage']
+		cfg._usage_code = opts_data.get('code', {}).get('usage')
+		cfg._help_pkg = self.help_pkg
 
 		if os.getenv('MMGEN_DEBUG_OPTS'):
 			opt_preproc_debug(po)
@@ -241,14 +280,15 @@ class Opts:
 class UserOpts(Opts):
 
 	help_pkg = 'mmgen.help'
-	info_funcs = ('usage', 'version', 'show_hash_presets')
+	info_funcs = ('version', 'show_hash_presets', 'list_daemon_ids')
 
 	global_opts_data = {
 		#  coin code : cmd code : opt : opt param : text
-		'text': """
+		'text': {
+			'options': """
 			-- --accept-defaults      Accept defaults at all prompts
 			hp --cashaddr=0|1         Display addresses in cashaddr format (default: 1)
-			-p --coin=c               Choose coin unit. Default: BTC. Current choice: {cu_dfl}
+			-c --coin=c               Choose coin unit. Default: BTC. Current choice: {cu_dfl}
 			er --token=t              Specify an ERC20 token by address or symbol
 			-- --color=0|1            Disable or enable color output (default: 1)
 			-- --columns=N            Force N columns of output with certain commands
@@ -260,63 +300,97 @@ class UserOpts(Opts):
 			rr --daemon-data-dir=path Specify coin daemon data directory location
 			Rr --daemon-id=ID         Specify the coin daemon ID
 			rr --ignore-daemon-version Ignore coin daemon version check
-			rr --http-timeout=t       Set HTTP timeout in seconds for JSON-RPC connections
+			Rr --list-daemon-ids      List all available daemon IDs
+			xr --http-timeout=t       Set HTTP timeout in seconds for JSON-RPC connections
 			-- --no-license           Suppress the GPL license prompt
-			rr --rpc-host=HOST        Communicate with coin daemon running on host HOST
+			Rr --rpc-host=HOST        Communicate with coin daemon running on host HOST
 			rr --rpc-port=PORT        Communicate with coin daemon listening on port PORT
-			rr --rpc-user=USER        Authenticate to coin daemon using username USER
-			rr --rpc-password=PASS    Authenticate to coin daemon using password PASS
+			br --rpc-user=USER        Authenticate to coin daemon using username USER
+			br --rpc-password=PASS    Authenticate to coin daemon using password PASS
 			Rr --rpc-backend=backend  Use backend 'backend' for JSON-RPC communications
+			-r --monero-wallet-rpc-user=USER Monero wallet RPC username
+			-r --monero-wallet-rpc-password=USER Monero wallet RPC password
+			-r --monero-daemon=HOST:PORT Connect to the monerod at HOST:PORT
+			-r --xmrwallet-compat     Enable XMR compatibility mode
 			Rr --aiohttp-rpc-queue-len=N Use N simultaneous RPC connections with aiohttp
 			-p --regtest=0|1          Disable or enable regtest mode
 			-- --testnet=0|1          Disable or enable testnet
+			-- --test-suite           Use test suite configuration
 			br --tw-name=NAME         Specify alternate name for the BTC/LTC/BCH tracking
 			+                         wallet (default: ‘{tw_name}’)
 			-- --skip-cfg-file        Skip reading the configuration file
 			-- --version              Print version information and exit
 			-- --usage                Print usage information and exit
-			b- --bob                  Specify user ‘Bob’ in MMGen regtest mode
-			b- --alice                Specify user ‘Alice’ in MMGen regtest mode
-			b- --carol                Specify user ‘Carol’ in MMGen regtest mode
-		""",
-		'code': lambda proto, help_notes, s: s.format(
-			pnm     = gc.proj_name,
-			cu_dfl  = proto.coin,
-			tw_name = help_notes('dfl_twname'))
+			x- --bob                  Specify user ‘Bob’ in MMGen regtest or test mode
+			x- --alice                Specify user ‘Alice’ in MMGen regtest or test mode
+			x- --carol                Specify user ‘Carol’ in MMGen regtest or test mode
+			x- --miner                Specify user ‘Miner’ in MMGen regtest or test mode
+			rr COIN-SPECIFIC OPTIONS:
+			rr   For descriptions, refer to the non-prefixed versions of these options above
+			rr   Prefixed options override their non-prefixed counterparts
+			rr   OPTION                            SUPPORTED PREFIXES
+			Rr --PREFIX-daemon-id                btc ltc bch eth etc
+			rr --PREFIX-ignore-daemon-version    btc ltc bch eth etc xmr
+			br --PREFIX-tw-name                  btc ltc bch
+			Rr --PREFIX-rpc-host                 btc ltc bch eth etc
+			rr --PREFIX-rpc-port                 btc ltc bch eth etc xmr
+			br --PREFIX-rpc-user                 btc ltc bch
+			br --PREFIX-rpc-password             btc ltc bch
+			Rr --PREFIX-max-tx-fee               btc ltc bch eth etc
+			Rr PROTO-SPECIFIC OPTIONS:
+			Rr   Option                            Supported Prefixes
+			Rr --PREFIX-chain-names              eth-mainnet eth-testnet etc-mainnet etc-testnet
+			""",
+		},
+		'code': {
+			'options': lambda proto, help_notes, s: s.format(
+				pnm     = gc.proj_name,
+				cu_dfl  = proto.coin,
+				tw_name = help_notes('dfl_twname')),
+		}
 	}
 
 	@staticmethod
-	def get_global_opts_filter(need_proto):
+	def get_global_filter_codes(need_proto):
 		"""
+		Enable options based on the value of --coin and name of executable
+
+		Both must produce a matching code list, or None, for the option to be enabled
+
 		Coin codes:
 		  'b' - Bitcoin or Bitcoin code fork supporting RPC
 		  'R' - Bitcoin or Ethereum code fork supporting RPC
 		  'e' - Ethereum or Ethereum code fork
-		  'r' - coin supporting RPC
 		  'h' - Bitcoin Cash
-		  '-' - other coin
+		  'r' - local RPC coin
+		  'X' - remote RPC coin
+		  'x' - local or remote RPC coin
+		  'm' - Monero
+		  '-' - any coin
 		Cmd codes:
 		  'p' - proto required
+		  'c' - proto required, --coin recognized
 		  'r' - RPC required
 		  '-' - no capabilities required
 		"""
-		ret = namedtuple('global_opts_filter', ['coin', 'cmd'])
+		ret = namedtuple('global_filter_codes', ['coin', 'cmd'])
 		if caps := gc.cmd_caps:
-			coin = caps.coin if caps.coin and len(caps.coin) > 1 else get_coin()
+			coin = get_coin() if caps.use_coin_opt else None
+			# a return value of None removes the filter, enabling all options for the given criterion
 			return ret(
-				coin = (
-					('-', 'r', 'R', 'b', 'h') if coin == 'bch' else
-					('-', 'r', 'R', 'b') if coin in gc.btc_fork_rpc_coins else
-					('-', 'r', 'R', 'e') if coin in gc.eth_fork_coins else
-					('-', 'r') if coin in gc.rpc_coins else
-					('-')),
+				coin = caps.coin_codes or (
+					None if coin is None else
+					['-', 'r', 'R', 'b', 'h', 'x'] if coin == 'bch' else
+					['-', 'r', 'R', 'b', 'x'] if coin in gc.btc_fork_rpc_coins else
+					['-', 'r', 'R', 'e', 'x'] if coin in gc.eth_fork_coins else
+					['-', 'r', 'x', 'm'] if coin == 'xmr' else
+					['-', 'r', 'x'] if coin in gc.local_rpc_coins else
+					['-', 'X', 'x'] if coin in gc.remote_rpc_coins else
+					['-']),
 				cmd = (
 					['-']
 					+ (['r'] if caps.rpc else [])
-					+ (['p'] if caps.proto else [])
+					+ (['p', 'c'] if caps.proto and caps.use_coin_opt else ['p'] if caps.proto else [])
 				))
-		else:
-			return ret(
-				coin = ('-', 'r', 'R', 'b', 'h', 'e'),
-				cmd = ('-', 'r', 'p')
-			)
+		else: # unmanaged command: enable everything
+			return ret(None, None)

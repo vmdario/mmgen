@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -267,7 +267,7 @@ class CoinInfo:
 			return None
 		return cls.coin_constants[network][idx]
 
-def make_proto(e, testnet=False):
+def make_proto(e, *, testnet=False):
 
 	proto = ('X_' if e.name[0] in '0123456789' else '') + e.name + ('Testnet' if testnet else '')
 
@@ -287,17 +287,13 @@ def make_proto(e, testnet=False):
 				'base_coin': e.symbol,
 				'addr_ver_info': dict(
 					[(num2hexstr(e.p2pkh_info[0]), 'p2pkh')] +
-					([(num2hexstr(e.p2sh_info[0]), 'p2sh')] if e.p2sh_info else [])
-				),
+					([(num2hexstr(e.p2sh_info[0]), 'p2sh')] if e.p2sh_info else [])),
 				'wif_ver_num': {'std': num2hexstr(e.wif_ver_num)},
 				'mmtypes':    ('L', 'C', 'S') if e.has_segwit else ('L', 'C'),
 				'dfl_mmtype': 'L',
-				'mmcaps':     (),
-			},
-		)
-	)
+				'mmcaps':     ()}))
 
-def init_genonly_altcoins(usr_coin=None, testnet=False):
+def init_genonly_altcoins(usr_coin=None, *, testnet=False):
 	"""
 	Initialize altcoin protocol class or classes for current network.
 	If usr_coin is a core coin, initialization is skipped.

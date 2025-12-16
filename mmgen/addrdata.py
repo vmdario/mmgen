@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@ from .addrlist import AddrListEntry, AddrListData, AddrList
 
 class AddrData(MMGenObject):
 
-	def __init__(self, proto, *args, **kwargs):
+	def __init__(self, proto):
 		self.al_ids = {}
 		self.proto = proto
 		self.rpc = None
@@ -68,10 +68,10 @@ class AddrData(MMGenObject):
 
 class TwAddrData(AddrData, metaclass=AsyncInit):
 
-	def __new__(cls, cfg, proto, *args, **kwargs):
+	def __new__(cls, cfg, proto, *, twctl=None):
 		return MMGenObject.__new__(proto.base_proto_subclass(cls, 'addrdata'))
 
-	async def __init__(self, cfg, proto, twctl=None):
+	async def __init__(self, cfg, proto, *, twctl=None):
 		from .rpc import rpc_init
 		from .tw.shared import TwLabel
 		from .seed import SeedID
@@ -79,7 +79,7 @@ class TwAddrData(AddrData, metaclass=AsyncInit):
 		self.proto = proto
 		self.rpc = await rpc_init(cfg, proto)
 		self.al_ids = {}
-		twd = await self.get_tw_data(twctl)
+		twd = await self.get_tw_data(twctl=twctl)
 		out, i = {}, 0
 		for acct, addr_array in twd:
 			l = get_obj(TwLabel, proto=self.proto, text=acct, silent=True)
@@ -103,5 +103,20 @@ class TwAddrData(AddrData, metaclass=AsyncInit):
 				self.cfg,
 				self.proto,
 				al_id = al_id,
-				adata = AddrListData(sorted(out[al_id], key=lambda a: a.idx))
-			))
+				adata = AddrListData(sorted(out[al_id], key=lambda a: a.idx))))
+
+class TwAddrDataWithStore(TwAddrData):
+
+	msgs = {
+		'multiple_acct_addrs': """
+			ERROR: More than one address found for account: {acct!r}.
+			Your tracking wallet is corrupted!
+		"""}
+
+	async def get_tw_data(self, *, twctl=None):
+		self.cfg._util.vmsg('Getting address data from tracking wallet')
+		if twctl is None:
+			from .tw.ctl import TwCtl
+			twctl = await TwCtl(self.cfg, self.proto)
+		# emulate the output of RPC 'listaccounts' and 'getaddressesbyaccount'
+		return [(mmid+' '+d['comment'], [d['addr']]) for mmid, d in list(twctl.mmid_ordered_dict.items())]

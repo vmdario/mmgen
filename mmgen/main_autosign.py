@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -36,6 +36,12 @@ opts_data = {
 --, --longhelp        Print help message for long (global) options
 -c, --coins=c         Coins to sign for (comma-separated list)
 -I, --no-insert-check Don’t check for device insertion
+-k, --keys-from-file=F Use wif keys listed in file ‘F’ for signing non-MMGen
+                      inputs. The file may be MMGen encrypted if desired. The
+                      ‘setup’ operation creates a temporary encrypted copy of
+                      the file in volatile memory for use during the signing
+                      session, thus permitting the deletion of the original
+                      file for increased security.
 -l, --seed-len=N      Specify wallet seed length of ‘N’ bits (for setup only)
 -L, --led             Use status LED to signal standby, busy and error
 -m, --mountpoint=M    Specify an alternate mountpoint 'M'
@@ -57,6 +63,8 @@ opts_data = {
 -v, --verbose         Produce more verbose output
 -w, --wallet-dir=D    Specify an alternate wallet dir
                       (default: {asi.dfl_wallet_dir!r})
+-W, --allow-non-wallet-swap Allow signing of swap transactions that send funds
+                      to non-wallet addresses
 -x, --xmrwallets=L    Range or list of wallets to be used for XMR autosigning
 """,
 	'notes': """
@@ -179,7 +187,7 @@ def main(do_loop):
 			ret = await asi.do_sign()
 			asi.at_exit(not ret)
 
-	async_run(do())
+	async_run(cfg, do)
 
 from .cfg import Config
 from .autosign import Autosign
@@ -190,8 +198,7 @@ cfg = Config(
 		'out_fmt': 'wallet',
 		'usr_randchars': 0,
 		'hash_preset': '1',
-		'label': 'Autosign Wallet',
-	},
+		'label': 'Autosign Wallet'},
 	caller_post_init = True)
 
 cmd = cfg._args[0] if len(cfg._args) == 1 else 'sign' if not cfg._args else cfg._usage()
@@ -200,51 +207,52 @@ if cmd not in Autosign.cmds + Autosign.util_cmds:
 	die(1, f'‘{cmd}’: unrecognized command')
 
 if cmd != 'setup':
-	for opt in ('seed_len', 'mnemonic_fmt'):
+	for opt in ('seed_len', 'mnemonic_fmt', 'keys_from_file'):
 		if getattr(cfg, opt):
-			die(1, f'--{opt.replace("_", "-")} makes sense only for the ‘setup’ operation')
+			die(1, f'--{opt.replace("_", "-")} is valid only for the ‘setup’ operation')
 
 if cmd not in ('sign', 'wait'):
 	for opt in ('no_summary', 'led', 'stealth_led', 'full_summary'):
 		if getattr(cfg, opt):
-			die(1, f'--{opt.replace("_", "-")} makes no sense for the ‘{cmd}’ operation')
+			die(1, f'--{opt.replace("_", "-")} is not valid for the ‘{cmd}’ operation')
 
-asi = Autosign(cfg, cmd)
+asi = Autosign(cfg, cmd=cmd)
 
 cfg._post_init()
 
-if cmd == 'gen_key':
-	asi.gen_key()
-elif cmd == 'setup':
-	asi.setup()
-	from .ui import keypress_confirm
-	if cfg.xmrwallets and keypress_confirm(cfg, '\nContinue with Monero setup?', default_yes=True):
-		msg('')
+match cmd:
+	case 'gen_key':
+		asi.gen_key()
+	case 'setup':
+		asi.setup()
+		from .ui import keypress_confirm
+		if cfg.xmrwallets and keypress_confirm(cfg, '\nContinue with Monero setup?', default_yes=True):
+			msg('')
+			asi.xmr_setup()
+		asi.do_umount()
+	case 'xmr_setup':
+		if not cfg.xmrwallets:
+			die(1, 'Please specify a wallet or range of wallets with the --xmrwallets option')
+		asi.do_mount()
 		asi.xmr_setup()
-	asi.do_umount()
-elif cmd == 'xmr_setup':
-	if not cfg.xmrwallets:
-		die(1, 'Please specify a wallet or range of wallets with the --xmrwallets option')
-	asi.do_mount()
-	asi.xmr_setup()
-	asi.do_umount()
-elif cmd.startswith('macos_ramdisk'):
-	if sys.platform != 'darwin':
-		die(1, f'The ‘{cmd}’ operation is for the macOS platform only')
-	getattr(asi, cmd)()
-elif cmd == 'enable_swap':
-	asi.swap.enable()
-elif cmd == 'disable_swap':
-	asi.swap.disable()
-elif cmd == 'sign':
-	main(do_loop=False)
-elif cmd == 'wait':
-	main(do_loop=True)
-elif cmd == 'clean':
-	asi.do_mount()
-	asi.clean_old_files()
-	asi.do_umount()
-elif cmd == 'wipe_key':
-	asi.do_mount()
-	asi.wipe_encryption_key()
-	asi.do_umount()
+		asi.do_umount()
+	case 'macos_ramdisk_setup' | 'macos_ramdisk_delete':
+		if sys.platform != 'darwin':
+			die(1, f'The ‘{cmd}’ operation is for the macOS platform only')
+		getattr(asi, cmd)()
+	case 'enable_swap':
+		asi.swap.enable()
+	case 'disable_swap':
+		asi.swap.disable()
+	case 'sign':
+		main(do_loop=False)
+	case 'wait':
+		main(do_loop=True)
+	case 'clean':
+		asi.do_mount()
+		asi.clean_old_files()
+		asi.do_umount()
+	case 'wipe_key':
+		asi.do_mount()
+		asi.wipe_encryption_key()
+		asi.do_umount()

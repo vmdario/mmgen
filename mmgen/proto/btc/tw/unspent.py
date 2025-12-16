@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -12,9 +12,20 @@
 proto.btc.tw.unspent: Bitcoin base protocol tracking wallet unspent outputs class
 """
 
+from ....obj import ImmutableAttr, ListItemAttr, HexStr
 from ....tw.unspent import TwUnspentOutputs
 
-class BitcoinTwUnspentOutputs(TwUnspentOutputs):
+from .view import BitcoinTwView
+
+class BitcoinTwUnspentOutputs(BitcoinTwView, TwUnspentOutputs):
+
+	class display_type(TwUnspentOutputs.display_type):
+
+		class squeezed(TwUnspentOutputs.display_type.squeezed):
+			cols = ('num', 'txid', 'vout', 'addr', 'mmid', 'comment', 'amt', 'amt2', 'date')
+
+		class detail(TwUnspentOutputs.display_type.detail):
+			cols = ('num', 'txid', 'vout', 'addr', 'mmid', 'amt', 'amt2', 'block', 'date_time', 'comment')
 
 	class MMGenTwUnspentOutput(TwUnspentOutputs.MMGenTwUnspentOutput):
 		# required by gen_unspent(); setting valid_attrs explicitly is also more efficient
@@ -30,14 +41,20 @@ class BitcoinTwUnspentOutputs(TwUnspentOutputs):
 			'date',
 			'scriptPubKey',
 			'skip'}
-		invalid_attrs = {'proto'}
+		date         = ListItemAttr(int, typeconv=False, reassign_ok=True)
+		scriptPubKey = ImmutableAttr(HexStr)
 
 	has_age = True
-	can_group = True
+	groupable = {
+		'addr':   'addr',
+		'twmmid': 'addr',
+		'txid':   'txid'}
+	disp_spc = 5
+	vout_w = 4
 	hdr_lbl = 'unspent outputs'
 	desc = 'unspent outputs'
 	item_desc = 'unspent output'
-	no_data_errmsg = 'No unspent outputs in tracking wallet!'
+	item_desc_pl = 'unspent outputs'
 	dump_fn_pfx = 'listunspent'
 	prompt_fs_in = [
 		'Sort options: [t]xid, [a]mount, [A]ge, a[d]dr, [M]mgen addr, [r]everse',
@@ -45,23 +62,20 @@ class BitcoinTwUnspentOutputs(TwUnspentOutputs):
 		'View options: pager [v]iew, [w]ide pager view{s}',
 		'Actions: [q]uit menu, [p]rint, r[e]draw, add [l]abel:']
 	prompt_fs_repl = {
-		'BCH': (1, 'Column options: toggle [D]ate/confs, cas[h]addr, gr[o]up, show [m]mgen addr')
-	}
-	key_mappings = {
-		't':'s_txid',
-		'a':'s_amt',
-		'd':'s_addr',
-		'A':'s_age',
-		'M':'s_twmmid',
-		'r':'s_reverse',
+		'BCH': (1, 'Column options: toggle [D]ate/confs, cas[h]addr, gr[o]up, show [m]mgen addr')}
+	extra_key_mappings = {
 		'D':'d_days',
 		'o':'d_group',
-		'm':'d_mmid',
-		'e':'d_redraw',
-		'p':'a_print_detail',
-		'v':'a_view',
-		'w':'a_view_detail',
-		'l':'i_comment_add'}
+		't':'s_txid',
+		'A':'s_age'}
+
+	sort_funcs = {
+		'addr':   lambda i: '{} {:010} {:024.12f}'.format(i.addr, 0xffffffff - abs(i.confs), i.amt),
+		'age':    lambda i: '{:010} {:024.12f}'.format(0xffffffff - abs(i.confs), i.amt),
+		'amt':    lambda i: '{:024.12f} {:010} {}'.format(i.amt, 0xffffffff - abs(i.confs), i.addr),
+		'txid':   lambda i: f'{i.txid} {i.vout:04}',
+		'twmmid': lambda i: '{} {:010} {:024.12f}'.format(
+			i.twmmid.sort_key, 0xffffffff - abs(i.confs), i.amt)}
 
 	async def get_rpc_data(self):
 		# bitcoin-cli help listunspent:

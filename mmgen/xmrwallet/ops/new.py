@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -14,7 +14,7 @@ xmrwallet.ops.new: Monero wallet ops for the MMGen Suite
 
 from ...color import red, pink
 from ...util import msg, ymsg, make_timestr
-
+from ...obj import TwComment
 from ...ui import keypress_confirm
 
 from ..rpc import MoneroWalletRPC
@@ -32,7 +32,7 @@ class OpNew(OpMixinSpec, OpWallet):
 		h.open_wallet('Monero')
 
 		desc = 'account' if self.account is None else 'address'
-		label = (
+		label = TwComment(
 			None if self.label == '' else
 			'{} [{}]'.format(self.label or f'xmrwallet new {desc}', make_timestr()))
 
@@ -47,8 +47,7 @@ class OpNew(OpMixinSpec, OpWallet):
 					a = desc,
 					b = red(str(self.source.idx)),
 					c = '' if desc == 'account' else f', account {red("#"+str(self.account))}',
-					d = 'label ' + pink('‘'+label+'’') if label else 'empty label')
-				):
+					d = 'label ' + pink('‘'+label+'’') if label else 'empty label')):
 
 			if desc == 'address':
 				h.create_new_addr(self.account, label=label)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@ test.include.common: Shared routines and data for the MMGen test suites
 import sys, os, re, atexit
 from subprocess import run, PIPE, DEVNULL
 from pathlib import Path
+from collections import namedtuple
 
 from mmgen.cfg import gv
 from mmgen.color import yellow, green, orange
@@ -82,17 +83,13 @@ sample_text = 'The Times 03/Jan/2009 Chancellor on brink of second bailout for b
 sample_mn = {
 	'mmgen': { # 'able': 0, 'youth': 1625, 'after' == 'afternoon'[:5]
 		'mn': 'able cast forgive master funny gaze after afternoon million paint moral youth',
-		'hex': '0005685ab4e94cbe3b228cf92112bc5f',
-	},
+		'hex': '0005685ab4e94cbe3b228cf92112bc5f'},
 	'bip39': { # len('sun') < uniq_ss_len
 		'mn': 'vessel ladder alter error federal sibling chat ability sun glass valve picture',
-		'hex': 'f30f8c1da665478f49b001d94c5fc452',
-	},
+		'hex': 'f30f8c1da665478f49b001d94c5fc452'},
 	'xmrseed': {
 		'mn': 'viewpoint donuts ardent template unveil agile meant unafraid urgent athlete rustled mime azure jaded hawk baby jagged haystack baby jagged haystack ramped oncoming point template',
-		'hex': 'e8164dda6d42bd1e261a3406b2038dcbddadbeefdeadbeefdeadbeefdeadbe0f',
-	},
-}
+		'hex': 'e8164dda6d42bd1e261a3406b2038dcbddadbeefdeadbeefdeadbeefdeadbe0f'}}
 
 ref_kafile_pass = 'kafile password'
 ref_kafile_hash_preset = '1'
@@ -146,7 +143,7 @@ def cleandir(d, do_msg=False):
 	if files:
 		from shutil import rmtree
 		if do_msg:
-			gmsg(f'Cleaning directory {d!r}')
+			gmsg(f'Cleaning directory ‘{d!r}’')
 		for f in files:
 			try:
 				os.unlink(os.path.join(d_enc, f))
@@ -162,12 +159,12 @@ def mk_tmpdir(d):
 		if e.errno != 17:
 			raise
 	else:
-		vmsg(f'Created directory {d!r}')
+		vmsg(f'Created directory ‘{d!r}’')
 
 def clean(cfgs, tmpdir_ids=None, extra_dirs=[]):
 
 	def clean_tmpdirs():
-		cfg_tmpdirs = {k:cfgs[k]['tmpdir'] for k in cfgs}
+		cfg_tmpdirs = {k: cfgs[k]['tmpdir'] for k in cfgs}
 		for d in map(str, sorted(map(int, (tmpdir_ids or cfg_tmpdirs)))):
 			if d in cfg_tmpdirs:
 				if cleandir(cfg_tmpdirs[d]):
@@ -205,6 +202,7 @@ def write_to_file(fn, data, binary=False):
 		fn,
 		data,
 		quiet = True,
+		no_stdout = True,
 		binary = binary,
 		ignore_opt_outdir = True)
 
@@ -234,6 +232,9 @@ def cmp_or_die(s, t, desc=None):
 			(f'For {desc}:\n' if desc else '') +
 			f'ERROR: recoded data:\n{t!r}\ndiffers from original data:\n{s!r}'
 		)
+
+def chk_equal(a, b):
+	assert a == b, f'equality test failed: {a} != {b}'
 
 def init_coverage():
 	coverdir = os.path.join('test', 'trace')
@@ -287,26 +288,26 @@ def end_msg(t):
 		('' if cfg.test_suite_deterministic else f', elapsed time: {t//60:02d}:{t%60:02d}')
 	))
 
-def start_test_daemons(*network_ids, remove_datadir=False):
+def start_test_daemons(*network_ids, remove_datadir=False, verbose=False):
 	if not cfg.no_daemon_autostart:
-		return test_daemons_ops(*network_ids, op='start', remove_datadir=remove_datadir)
+		return test_daemons_ops(*network_ids, op='start', remove_datadir=remove_datadir, verbose=verbose)
 
-def stop_test_daemons(*network_ids, force=False, remove_datadir=False):
+def stop_test_daemons(*network_ids, force=False, remove_datadir=False, verbose=False):
 	if force or not cfg.no_daemon_stop:
-		return test_daemons_ops(*network_ids, op='stop', remove_datadir=remove_datadir)
+		return test_daemons_ops(*network_ids, op='stop', remove_datadir=remove_datadir, verbose=verbose)
 
-def restart_test_daemons(*network_ids, remove_datadir=False):
-	if not stop_test_daemons(*network_ids):
+def restart_test_daemons(*network_ids, remove_datadir=False, verbose=False):
+	if not stop_test_daemons(*network_ids, remove_datadir=remove_datadir, verbose=verbose):
 		return False
-	return start_test_daemons(*network_ids, remove_datadir=remove_datadir)
+	return start_test_daemons(*network_ids, remove_datadir=remove_datadir, verbose=verbose)
 
-def test_daemons_ops(*network_ids, op, remove_datadir=False):
+def test_daemons_ops(*network_ids, op, remove_datadir=False, verbose=False):
 	if not cfg.no_daemon_autostart:
 		from mmgen.daemon import CoinDaemon
-		silent = not (cfg.verbose or cfg.exact_output)
+		silent = not (verbose or cfg.verbose or cfg.exact_output)
 		ret = False
 		for network_id in network_ids:
-			d = CoinDaemon(cfg, network_id, test_suite=True)
+			d = CoinDaemon(cfg, network_id=network_id, test_suite=True)
 			if remove_datadir:
 				d.wait = True
 				d.stop(silent=True)
@@ -319,10 +320,10 @@ tested_solc_ver = '0.8.26'
 def check_solc_ver():
 	cmd = 'python3 scripts/create-token.py --check-solc-version'
 	try:
-		cp = run(cmd.split(), check=False, stdout=PIPE)
+		cp = run(cmd.split(), check=False, stdout=PIPE, text=True)
 	except Exception as e:
 		die(4, f'Unable to execute {cmd!r}: {e}')
-	res = cp.stdout.decode().strip()
+	res = cp.stdout.strip()
 	if cp.returncode == 0:
 		omsg(
 			orange(f'Found supported solc version {res}') if res == tested_solc_ver else
@@ -338,32 +339,67 @@ def get_ethkey():
 	cmdnames = ('ethkey', 'openethereum-ethkey')
 	for cmdname in cmdnames:
 		try:
-			run([cmdname, '--help'], stdout=PIPE)
+			cp = run([cmdname, '--help'], stdout=PIPE, text=True)
 		except:
 			pass
 		else:
-			return cmdname
-	die(1, f'ethkey executable not found (tried {cmdnames})')
+			if 'Parity' in cp.stdout:
+				return cmdname
+	return None
 
 def do_run(cmd, check=True):
-	return run(cmd, stdout=PIPE, stderr=DEVNULL, check=check)
+	return run(cmd, stdout=PIPE, stderr=DEVNULL, check=check, text=True)
+
+def test_exec(cmd):
+	try:
+		do_run(cmd.split())
+		return True
+	except Exception:
+		return False
+
+def in_nix_environment():
+	for path in os.getenv('PATH').split(':'):
+		if os.path.realpath(path).startswith('/nix/store'):
+			return True
+	return False
+
+def make_burn_addr(proto, mmtype='compressed', hexdata=None):
+	from mmgen.tool.coin import tool_cmd
+	return tool_cmd(
+		cfg     = cfg,
+		cmdname = 'pubhash2addr',
+		proto   = proto,
+		mmtype  = mmtype).pubhash2addr(hexdata or '00'*20)
+
+def create_addrpairs(proto, mmtype, num):
+	ap = namedtuple('addrpair', ['wif', 'addr'])
+	from mmgen.tool.coin import tool_cmd
+	n = 123456789123456789
+	return [ap(*tool_cmd(
+		cfg     = cfg,
+		cmdname = 'privhex2pair',
+		proto   = proto,
+		mmtype  = mmtype).privhex2pair(f'{n+m:064x}'))
+			for m in range(num)]
 
 def VirtBlockDevice(img_path, size):
-	if sys.platform == 'linux':
-		return VirtBlockDeviceLinux(img_path, size)
-	elif sys.platform == 'darwin':
-		return VirtBlockDeviceMacOS(img_path, size)
+	match sys.platform:
+		case 'linux':
+			return VirtBlockDeviceLinux(img_path, size)
+		case 'darwin':
+			return VirtBlockDeviceMacOS(img_path, size)
 
 class VirtBlockDeviceBase:
 
 	@property
 	def dev(self):
-		res = self._get_associations()
-		if len(res) < 1:
-			die(2, f'No device associated with {self.img_path}')
-		elif len(res) > 1:
-			die(2, f'More than one device associated with {self.img_path}')
-		return res[0]
+		match self._get_associations():
+			case [x]:
+				return x
+			case []:
+				die(2, f'No device associated with {self.img_path}')
+			case _:
+				die(2, f'More than one device associated with {self.img_path}')
 
 	def try_detach(self):
 		try:
@@ -418,20 +454,20 @@ class VirtBlockDeviceLinux(VirtBlockDeviceBase):
 		self.size = size
 
 	def _get_associations(self):
-		cmd = ['/sbin/losetup', '-n', '-O', 'NAME', '-j', str(self.img_path)]
-		return do_run(cmd).stdout.decode().splitlines()
+		cmd = ['sudo', 'losetup', '-n', '-O', 'NAME', '-j', str(self.img_path)]
+		return do_run(cmd).stdout.splitlines()
 
 	def get_new_dev(self):
-		return do_run(['sudo', '/sbin/losetup', '-f']).stdout.decode().strip()
+		return do_run(['sudo', 'losetup', '-f']).stdout.strip()
 
 	def do_create(self, size, path):
 		do_run(['truncate', f'--size={size}', str(path)])
 
 	def do_attach(self, path, dev):
-		do_run(['sudo', '/sbin/losetup', dev, str(path)])
+		do_run(['sudo', 'losetup', dev, str(path)])
 
 	def do_detach(self, dev, check=True):
-		do_run(['sudo', '/sbin/losetup', '-d', dev], check=check)
+		do_run(['sudo', 'losetup', '-d', dev], check=check)
 
 class VirtBlockDeviceMacOS(VirtBlockDeviceBase):
 

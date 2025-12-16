@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -51,23 +51,19 @@ class keygen_base:
 		return None
 
 	@classmethod
-	def get_clsname(cls, cfg, silent=False):
+	def get_clsname(cls, cfg, *, silent=False):
 		return cls.__name__
 
 backend_data = {
 	'std': {
 		'backends': ('libsecp256k1', 'python-ecdsa'),
-		'package': 'secp256k1',
-	},
+		'package': 'secp256k1'},
 	'monero': {
 		'backends': ('nacl', 'ed25519ll-djbec', 'ed25519'),
-		'package': 'xmr',
-	},
+		'package': 'xmr'},
 	'zcash_z': {
 		'backends': ('nacl',),
-		'package': 'zec',
-	},
-}
+		'package': 'zec'}}
 
 def get_backends(pubkey_type):
 	return backend_data[pubkey_type]['backends']
@@ -78,7 +74,7 @@ def get_pubkey_type_cls(pubkey_type):
 		importlib.import_module(f'mmgen.proto.{backend_data[pubkey_type]["package"]}.keygen'),
 		'backend')
 
-def _check_backend(cfg, backend, pubkey_type, desc='keygen backend'):
+def _check_backend(cfg, backend, pubkey_type, *, desc='keygen backend'):
 
 	from .util import is_int, die
 
@@ -104,7 +100,7 @@ def check_backend(cfg, proto, backend, addr_type):
 
 	return  _check_backend(cfg, backend, pubkey_type, desc='--keygen-backend parameter')
 
-def KeyGenerator(cfg, proto, pubkey_type, backend=None, silent=False):
+def KeyGenerator(cfg, proto, pubkey_type, *, backend=None, silent=False):
 	"""
 	factory function returning a key generator backend for the specified pubkey type
 	"""

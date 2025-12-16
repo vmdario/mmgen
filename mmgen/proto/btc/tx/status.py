@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -15,13 +15,19 @@ proto.btc.tx.status: Bitcoin transaction status class
 import time
 
 from ....tx import status as TxBase
-from ....util import msg, suf, die
+from ....util import msg, suf
 from ....util2 import format_elapsed_hr
 
 class Status(TxBase.Status):
 
-	async def display(self, usr_req=False):
+	async def display(self, *, idx=''):
 
+		def do_return(exitval, message):
+			if message:
+				msg(message)
+			return exitval
+
+		assert idx == '', f'multiple txhex not supported for {self.tx.proto}'
 		tx = self.tx
 
 		class r:
@@ -75,25 +81,23 @@ class Status(TxBase.Status):
 					return False
 
 		if await is_in_mempool():
-			if usr_req:
-				d = await tx.rpc.icall(
-					'gettransaction',
-					txid              = tx.coin_txid,
-					include_watchonly = True,
-					verbose           = False)
-				rep = ('' if d.get('bip125-replaceable') == 'yes' else 'NOT ') + 'replaceable'
-				t = d['timereceived']
-				if tx.cfg.quiet:
-					msg('Transaction is in mempool')
-				else:
-					msg(f'TX status: in mempool, {rep}')
-					msg('Sent {} ({})'.format(time.strftime('%c', time.gmtime(t)), format_elapsed_hr(t)))
+			d = await tx.rpc.icall(
+				'gettransaction',
+				txid              = tx.coin_txid,
+				include_watchonly = True,
+				verbose           = False)
+			rep = ('' if d.get('bip125-replaceable') == 'yes' else 'NOT ') + 'replaceable'
+			t = d['timereceived']
+			if tx.cfg.quiet:
+				msg('Transaction is in mempool')
 			else:
-				msg('Warning: transaction is in mempool!')
+				msg(f'TX status: in mempool, {rep}')
+				msg('Sent {} ({})'.format(time.strftime('%c', time.gmtime(t)), format_elapsed_hr(t)))
+			return do_return(0, '')
 		elif await is_in_wallet():
-			die(0, f'Transaction has {r.confs} confirmation{suf(r.confs)}')
+			return do_return(0, f'Transaction has {r.confs} confirmation{suf(r.confs)}')
 		elif await is_in_utxos():
-			die(4, 'ERROR: transaction is in the blockchain (but not in the tracking wallet)!')
+			return do_return(4, 'ERROR: transaction is in the blockchain (but not in the tracking wallet)!')
 		elif await is_replaced():
 			msg('Transaction has been replaced')
 			msg('Replacement transaction ' + (
@@ -110,4 +114,4 @@ class Status(TxBase.Status):
 						d.append({})
 				for txid, mp_entry in zip(r.replacing_txs, d):
 					msg(f'  {txid}' + (' in mempool' if 'height' in mp_entry else ''))
-			die(0, '')
+			return do_return(0, '')

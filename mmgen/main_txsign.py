@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@ from .util import msg, ymsg, suf, die, async_run
 from .subseed import SubSeedIdxRange
 from .color import orange
 
-# -w, --use-wallet-dat (keys from running coin daemon) removed: use walletdump rpc instead
 opts_data = {
 	'sets': [('yes', True, 'quiet', True)],
 	'text': {
@@ -34,6 +33,8 @@ opts_data = {
 		'options': """
 -h, --help            Print this help message
 --, --longhelp        Print help message for long (global) options
+-a, --autosign        Sign a transaction created for offline autosigning (see
+                      ‘mmgen-autosign’)
 -b, --brain-params=l,p Use seed length 'l' and hash preset 'p' for
                       brainwallet input
 -d, --outdir=      d  Specify an alternate directory 'd' for output
@@ -67,6 +68,8 @@ opts_data = {
                       wallet is scanned for subseeds.
 -v, --verbose         Produce more verbose output
 -V, --vsize-adj=   f  Adjust transaction's estimated vsize by factor 'f'
+-W, --allow-non-wallet-swap Allow signing of swap transactions that send funds
+                      to non-wallet addresses
 -y, --yes             Answer 'yes' to prompts, suppress non-essential output
 """,
 	'notes': """
@@ -74,9 +77,7 @@ opts_data = {
 Seed source files must have the canonical extensions listed in the 'FileExt'
 column below:
 
-FMT CODES:
-
-  {f}
+{f}
 """
 	},
 	'code': {
@@ -91,42 +92,40 @@ FMT CODES:
 			ss      = help_notes('dfl_subseeds'),
 			ss_max  = SubSeedIdxRange.max_idx,
 			cu      = proto.coin),
-		'notes': lambda help_notes, s: s.format(
-			t       = help_notes('txsign'),
+		'notes': lambda help_mod, help_notes, s: s.format(
+			t       = help_mod('txsign'),
 			f       = help_notes('fmt_codes')),
 	}
 }
 
 cfg = Config(opts_data=opts_data)
 
-infiles = cfg._args
-
-if not infiles:
+if not cfg._args:
 	cfg._usage()
 
 from .fileutil import check_infile
-for i in infiles:
+for i in cfg._args:
 	check_infile(i)
 
 if not cfg.info and not cfg.terse_info:
 	from .ui import do_license_msg
 	do_license_msg(cfg, immed=True)
 
-from .tx.sign import txsign, get_tx_files, get_seed_files, get_keylist, get_keyaddrlist
+from .tx.keys import TxKeys, pop_txfiles, pop_seedfiles
 
-tx_files   = get_tx_files(cfg, infiles)
-seed_files = get_seed_files(cfg, infiles)
+txfiles = pop_txfiles(cfg)
+seedfiles = pop_seedfiles(cfg)
 
 async def main():
 
 	bad_tx_count = 0
 	tx_num_disp = ''
 
-	for tx_num, tx_file in enumerate(tx_files, 1):
+	for tx_num, tx_file in enumerate(txfiles, 1):
 
-		if len(tx_files) > 1:
+		if len(txfiles) > 1:
 			tx_num_disp = f' #{tx_num}'
-			msg(orange(f'\nTransaction{tx_num_disp} of {len(tx_files)}:'))
+			msg(orange(f'\nTransaction{tx_num_disp} of {len(txfiles)}:'))
 
 		from .tx import UnsignedTX
 		tx1 = UnsignedTX(cfg=cfg, filename=tx_file)
@@ -148,11 +147,7 @@ async def main():
 		if not cfg.yes:
 			tx1.info.view_with_prompt(f'View data for transaction{tx_num_disp}?')
 
-		kal = get_keyaddrlist(cfg, tx1.proto)
-		kl = get_keylist(cfg)
-
-		tx2 = await txsign(cfg, tx1, seed_files, kl, kal, tx_num_disp)
-		if tx2:
+		if tx2 := await tx1.sign(TxKeys(cfg, tx1, seedfiles=seedfiles).keys, tx_num_disp):
 			if not cfg.yes:
 				tx2.add_comment() # edits an existing comment
 			tx2.file.write(ask_write=not cfg.yes, ask_write_default_yes=True, add_desc=tx_num_disp)
@@ -163,4 +158,4 @@ async def main():
 	if bad_tx_count:
 		die(2, f'{bad_tx_count} transaction{suf(bad_tx_count)} could not be signed')
 
-async_run(main())
+async_run(cfg, main)

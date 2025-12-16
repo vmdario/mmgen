@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -37,7 +37,7 @@ class backend:
 				compressed = privkey.compressed)
 
 		@classmethod
-		def get_clsname(cls, cfg, silent=False):
+		def get_clsname(cls, cfg, *, silent=False):
 			try:
 				from .secp256k1 import pubkey_gen
 				if not pubkey_gen(bytes.fromhex('deadbeef'*8), 1):
@@ -67,7 +67,7 @@ class backend:
 			Uncompressed public keys start with 0x04; compressed public keys begin with 0x03 or
 			0x02 depending on whether they're greater or less than the midpoint of the curve.
 			"""
-			def privnum2pubkey(numpriv, compressed=False):
+			def privnum2pubkey(numpriv, *, compressed=False):
 				pk = self.ecdsa.SigningKey.from_secret_exponent(numpriv, curve=self.ecdsa.SECP256k1)
 				# vk_bytes = x (32 bytes) + y (32 bytes) (unsigned big-endian)
 				return pubkey_format(pk.verifying_key.to_string(), compressed)

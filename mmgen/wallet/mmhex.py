@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -23,39 +23,40 @@ class wallet(wallet):
 	desc = 'hexadecimal seed data with checksum'
 
 	def _format(self):
-		h = self.seed.data.hex()
-		self.ssdata.chksum = make_chksum_6(h)
-		self.fmt_data = f'{self.ssdata.chksum} {split_into_cols(4, h)}\n'
+		seed_hex = self.seed.data.hex()
+		self.ssdata.chksum = make_chksum_6(seed_hex)
+		self.fmt_data = f'{self.ssdata.chksum} {split_into_cols(4, seed_hex)}\n'
 
 	def _deformat(self):
-		desc = self.desc
-		d = self.fmt_data.split()
-		try:
-			d[1]
-			chk, hstr = d[0], ''.join(d[1:])
-		except:
-			msg(f'{self.fmt_data.strip()!r}: invalid {desc}')
+		match self.fmt_data.split():
+			case [chksum, *hex_chunks] if hex_chunks:
+				hex_str = ''.join(hex_chunks)
+			case _:
+				msg(f'{self.fmt_data!r}: invalid {self.desc}')
+				return False
+
+		if not len(hex_str) * 4 in Seed.lens:
+			msg(f'Invalid data length ({len(hex_str)}) in {self.desc}')
 			return False
 
-		if not len(hstr)*4 in Seed.lens:
-			msg(f'Invalid data length ({len(hstr)}) in {desc}')
+		if not is_chksum_6(chksum):
+			msg(f'{chksum!r}: invalid checksum format in {self.desc}')
 			return False
 
-		if not is_chksum_6(chk):
-			msg(f'{chk!r}: invalid checksum format in {desc}')
+		if not is_hex_str(hex_str):
+			msg(f'{hex_str!r}: not a hexadecimal string, in {self.desc}')
 			return False
 
-		if not is_hex_str(hstr):
-			msg(f'{hstr!r}: not a hexadecimal string, in {desc}')
+		self.cfg._util.vmsg_r(f'Validating {self.desc} checksum...')
+
+		if not self.cfg._util.compare_chksums(
+				chksum, 'file',
+				make_chksum_6(hex_str), 'computed',
+				verbose = True):
 			return False
 
-		self.cfg._util.vmsg_r(f'Validating {desc} checksum...')
-
-		if not self.cfg._util.compare_chksums(chk, 'file', make_chksum_6(hstr), 'computed', verbose=True):
-			return False
-
-		self.seed = Seed(self.cfg, bytes.fromhex(hstr))
-		self.ssdata.chksum = chk
+		self.seed = Seed(self.cfg, seed_bin=bytes.fromhex(hex_str))
+		self.ssdata.chksum = chksum
 
 		self.check_usr_seed_len()
 

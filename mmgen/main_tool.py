@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,32 +23,37 @@ mmgen-tool:  Perform various MMGen- and cryptocoin-related operations.
 
 import sys, os, importlib
 from .cfg import gc, Config
-from .util import msg, Msg, die, capfirst, suf, async_run
+from .util import msg, Msg, die, capfirst, suf, async_run, isAsync
 
 opts_data = {
+	'filter_codes': ['-'],
 	'text': {
 		'desc':    f'Perform various {gc.proj_name}- and cryptocoin-related operations',
 		'usage':   '[opts] <command> <command args>',
 		'options': """
--d, --outdir=       d  Specify an alternate directory 'd' for output
--h, --help             Print this help message
---, --longhelp         Print help message for long (global) options
--e, --echo-passphrase  Echo passphrase or mnemonic to screen upon entry
--k, --use-internal-keccak-module Force use of the internal keccak module
--K, --keygen-backend=n Use backend 'n' for public key generation.  Options
-                       for {coin_id}: {kgs}
--l, --list             List available commands
--p, --hash-preset= p   Use the scrypt hash parameters defined by preset 'p'
-                       for password hashing (default: '{gc.dfl_hash_preset}')
--P, --passwd-file= f   Get passphrase from file 'f'.
--q, --quiet            Produce quieter output
--r, --usr-randchars=n  Get 'n' characters of additional randomness from
-                       user (min={cfg.min_urandchars}, max={cfg.max_urandchars})
--t, --type=t           Specify address type (valid choices: 'legacy',
-                       'compressed', 'segwit', 'bech32', 'zcash_z')
--v, --verbose          Produce more verbose output
--X, --cached-balances  Use cached balances (Ethereum only)
--y, --yes              Answer 'yes' to prompts, suppress non-essential output
+			-- -d, --outdir=       d  Specify an alternate directory 'd' for output
+			-- -h, --help             Print this help message
+			-- --, --longhelp         Print help message for long (global) options
+			x- -a, --autosign         Operate on an autosigned transaction
+			-- -e, --echo-passphrase  Echo passphrase or mnemonic to screen upon entry
+			-- -k, --use-internal-keccak-module Force use of the internal keccak module
+			-- -K, --keygen-backend=n Use backend 'n' for public key generation.  Options
+			+                         for {coin_id}: {kgs}
+			-- -l, --list             List available commands
+			-- -p, --hash-preset= p   Use the scrypt hash parameters defined by preset 'p'
+			+                         for password hashing (default: '{gc.dfl_hash_preset}')
+			-- -P, --passwd-file= f   Get passphrase from file 'f'.
+			-- -q, --quiet            Produce quieter output
+			-- -r, --usr-randchars=n  Get 'n' characters of additional randomness from
+			+                         user (min={cfg.min_urandchars}, max={cfg.max_urandchars})
+			-- -t, --type=t           Specify address type (valid choices: 'legacy',
+			+                         'compressed', 'segwit', 'bech32', 'zcash_z')
+			-- -v, --verbose          Produce more verbose output
+			-- -x, --proxy=P          Proxy HTTP connections via SOCKS5h proxy ‘P’ (host:port).
+			+                         Use special value ‘env’ to honor *_PROXY environment
+			+                         vars instead.
+			e- -X, --cached-balances  Use cached balances
+			-- -y, --yes              Answer 'yes' to prompts, suppress non-essential output
 """,
 	'notes': """
 
@@ -114,6 +119,7 @@ mods = {
 		'pubhash2addr',
 		'pubhex2addr',
 		'pubhex2redeem_script',
+		'privhex2pair',
 		'randpair',
 		'randwif',
 		'redeem_script2addr',
@@ -179,7 +185,7 @@ mods = {
 def get_cmds():
 	return [cmd for mod, cmds in mods.items() if mod != 'help' for cmd in cmds]
 
-def create_call_sig(cmd, cls, as_string=False):
+def create_call_sig(cmd, cls, *, as_string=False):
 
 	m = getattr(cls, cmd)
 
@@ -189,8 +195,11 @@ def create_call_sig(cmd, cls, as_string=False):
 		args, dfls, ann = va['args'], va['dfls'], va['annots']
 	else:
 		flag = None
-		args = m.__code__.co_varnames[1:m.__code__.co_argcount]
-		dfls = m.__defaults__ or ()
+		c = m.__code__
+		args = c.co_varnames[1:c.co_argcount + c.co_posonlyargcount + c.co_kwonlyargcount]
+		dfls = (
+			(m.__defaults__ or ()) +
+			tuple(m.__kwdefaults__[k] for k in args if k in (m.__kwdefaults__ or ())))
 		ann  = m.__annotations__
 
 	nargs = len(args) - len(dfls)
@@ -206,10 +215,10 @@ def create_call_sig(cmd, cls, as_string=False):
 	else:
 		get_type_from_ann = lambda x: 'str' if ann[x] == 'sstr' else ann[x].__name__
 		return (
-			[(a, get_type_from_ann(a)) for a in args[:nargs]],            # c_args
-			{a:dfls[n] for n, a in enumerate(args[nargs:])},              # c_kwargs
-			{a:dfl_types[n] for n, a in enumerate(args[nargs:])},         # c_kwargs_types
-			('STDIN_OK' if nargs and ann[args[0]] == 'sstr' else flag),  # flag
+			[(a, get_type_from_ann(a)) for a in args[:nargs]],          # c_args
+			{a: dfls[n] for n, a in enumerate(args[nargs:])},           # c_kwargs
+			{a: dfl_types[n] for n, a in enumerate(args[nargs:])},      # c_kwargs_types
+			('STDIN_OK' if nargs and ann[args[0]] == 'sstr' else flag), # flag
 			ann)                                                        # ann
 
 def process_args(cmd, cmd_args, cls):
@@ -291,11 +300,11 @@ def process_args(cmd, cmd_args, cls):
 		args = [conv_type(u_args[i], c_args[0][0], c_args[0][1]) for i in range(len(u_args))]
 	else:
 		args = [conv_type(u_args[i], c_args[i][0], c_args[i][1]) for i in range(len(c_args))]
-	kwargs = {k:conv_type(v, k, c_kwargs_types[k].__name__) for k, v in u_kwargs.items()}
+	kwargs = {k: conv_type(v, k, c_kwargs_types[k].__name__) for k, v in u_kwargs.items()}
 
 	return (args, kwargs)
 
-def process_result(ret, pager=False, print_result=False):
+def process_result(ret, *, pager=False, print_result=False):
 	"""
 	Convert result to something suitable for output to screen and return it.
 	If result is bytes and not convertible to utf8, output as binary using os.write().
@@ -313,24 +322,25 @@ def process_result(ret, pager=False, print_result=False):
 		else:
 			return o
 
-	if ret is True:
-		return True
-	elif ret in (False, None):
-		die(2, f'tool command returned {ret!r}')
-	elif isinstance(ret, str):
-		return triage_result(ret)
-	elif isinstance(ret, int):
-		return triage_result(str(ret))
-	elif isinstance(ret, tuple):
-		return triage_result('\n'.join([r.decode() if isinstance(r, bytes) else r for r in ret]))
-	elif isinstance(ret, bytes):
-		try:
-			return triage_result(ret.decode())
-		except:
-			# don't add NL to binary data if it can't be converted to utf8
-			return os.write(1, ret) if print_result else ret
-	else:
-		die(2, f'tool.py: can’t handle return value of type {type(ret).__name__!r}')
+	match ret:
+		case True:
+			return True
+		case False | None:
+			die(2, f'tool command returned {ret!r}')
+		case str():
+			return triage_result(ret)
+		case int():
+			return triage_result(str(ret))
+		case tuple():
+			return triage_result('\n'.join([r.decode() if isinstance(r, bytes) else r for r in ret]))
+		case bytes():
+			try:
+				return triage_result(ret.decode())
+			except:
+				# don't add NL to binary data if it can't be converted to utf8
+				return os.write(1, ret) if print_result else ret
+		case _:
+			die(2, f'tool.py: can’t handle return value of type {type(ret).__name__!r}')
 
 def get_cmd_cls(cmd):
 	for modname, cmdlist in mods.items():
@@ -382,12 +392,9 @@ if gc.prog_name.endswith('-tool'):
 
 	args, kwargs = process_args(cmd, args, cls)
 
-	ret = getattr(cls(cfg, cmdname=cmd), cmd)(*args, **kwargs)
-
-	if type(ret).__name__ == 'coroutine':
-		ret = async_run(ret)
+	func = getattr(cls(cfg, cmdname=cmd), cmd)
 
 	process_result(
-		ret,
+		async_run(cfg, func, args=args, kwargs=kwargs) if isAsync(func) else func(*args, **kwargs),
 		pager = kwargs.get('pager'),
 		print_result = True)

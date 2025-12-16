@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -18,7 +18,7 @@ from collections import namedtuple
 from ..util import msg, ymsg, fmt, suf, die, make_timestamp, make_chksum_8
 from ..base_obj import AsyncInit
 from ..objmethods import MMGenObject
-from ..rpc import json_encoder
+from ..rpc.util import json_encoder
 from .ctl import TwCtl
 
 class TwJSON:
@@ -30,7 +30,8 @@ class TwJSON:
 		fn_pfx = 'mmgen-tracking-wallet-dump'
 
 		def __new__(cls, cfg, proto, *args, **kwargs):
-			return MMGenObject.__new__(proto.base_proto_subclass(TwJSON, 'tw.json', cls.__name__))
+			return MMGenObject.__new__(
+				proto.base_proto_subclass(TwJSON, 'tw.json', sub_clsname=cls.__name__))
 
 		def __init__(self, cfg, proto):
 			self.cfg = cfg
@@ -62,7 +63,7 @@ class TwJSON:
 
 			return fn
 
-		def json_dump(self, data, pretty=False):
+		def json_dump(self, data, *, pretty=False):
 			return json.dumps(
 				data,
 				cls        = json_encoder,
@@ -90,6 +91,7 @@ class TwJSON:
 				cfg,
 				proto,
 				filename,
+				*,
 				ignore_checksum = False,
 				batch           = False):
 
@@ -163,6 +165,7 @@ class TwJSON:
 				self,
 				cfg,
 				proto,
+				*,
 				include_amts    = True,
 				pretty          = False,
 				prune           = False,
@@ -198,8 +201,8 @@ class TwJSON:
 				'mappings_checksum': self.mappings_chksum,
 				'entries_keys': self.keys,
 				'entries': await self.entries_out,
-				'num_entries': self.num_entries,
-			}
+				'num_entries': self.num_entries}
+
 			if include_amts:
 				data['value'] = await self.total
 

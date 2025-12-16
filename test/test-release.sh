@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -18,28 +18,32 @@
 
 run_test() {
 	set +x
-	tests="t_$1"
-	skips="t_$1_skip"
+	local tests_in="t_$1" skips="t_$1_skip" continue_on_error="e_$1" have_error= tests
 
 	while read skip test; do
 		[ "$test" ] || continue
-		echo "${!skips}" | grep -q $skip && continue
+		echo "${!skips}" | grep -q "\<$skip\>" && {
+			echo -e "${GRAY}Skipping: $test$RESET"
+			continue
+		}
+		tests+=("$test")
+	done <<<${!tests_in}
 
-		if [ "$LIST_CMDS" ]; then
-			echo $test
+	for test in "${tests[@]}"; do
+		if [ "$LIST_CMDS" ]; then echo $test; continue; fi
+		test_disp=$YELLOW${test/\#/$RESET$MAGENTA\#}$RESET
+		if [ "${test:0:1}" == '#' ]; then
+			echo -e "$test_disp"
 		else
-			test_disp=$YELLOW${test/\#/$RESET$MAGENTA\#}$RESET
-			if [ "${test:0:1}" == '#' ]; then
-				echo -e "$test_disp"
-			else
-				echo -e "${GREEN}Running:$RESET $test_disp"
-				eval "$test" || {
-					echo -e $RED"test-release.sh: test '$CUR_TEST' failed at command '$test'"$RESET
-					exit 1
-				}
-			fi
+			echo -e "${GREEN}Running:$RESET $test_disp"
+			eval "$test" || {
+				echo -e $RED"test-release.sh: test '$CUR_TEST' failed at command '$test'"$RESET
+				have_error=1
+				[ "${!continue_on_error}" ] || exit 1
+			}
 		fi
-	done <<<${!tests}
+	done
+	if [ "$have_error" ]; then { echo -e "$RED${!continue_on_error}$RESET"; exit 1; }; fi
 }
 
 prompt_skip() {
@@ -206,8 +210,6 @@ do_reexec() {
 
 	[ -e 'test/init.sh' ] && test/init.sh $VERBOSE_SHORTOPT
 
-	[ "$repo" == 'mmgen-wallet' ] && eval "python3 setup.py build_ext --inplace $STDOUT_DEVNULL"
-
 	echo -e "\n${BLUE}Executing test runner: ${CYAN}test/test-release $ORIG_ARGS$RESET\n"
 
 	if [ "$TYPESCRIPT" ]; then
@@ -215,6 +217,18 @@ do_reexec() {
 	else
 		eval $exec_prog
 	fi
+}
+
+install_secp256k1_mod_maybe() {
+	if [[ "$repo" =~ ^mmgen[-_]wallet ]]; then
+		eval "python3 setup.py build_ext --inplace $STDOUT_DEVNULL"
+	fi
+}
+
+in_nix_environment() {
+	for path in ${PATH//:/ }; do
+		realpath -q $path | grep -q '^/nix/store/' && break
+	done
 }
 
 # start execution
@@ -231,9 +245,11 @@ orig_cwd=$(pwd)
 repo=$(basename $orig_cwd)
 
 if [ "$(uname -m)" == 'armv7l' ]; then
-	ARM32=1
+	SOC=1 ARM32=1
 elif [ "$(uname -m)" == 'aarch64' ]; then
-	ARM64=1
+	SOC=1 ARM64=1
+elif [ "$(uname -m)" == 'riscv64' ]; then
+	SOC=1 RISCV64=1
 elif [ "$(uname -s)" == 'Darwin' ]; then
 	DARWIN=1
 	DISTRO='DARWIN'
@@ -241,11 +257,6 @@ elif [ "$MSYSTEM" ] && uname -a | grep -qi 'msys'; then
 	MSYS2=1
 	DISTRO='MSYS2'
 fi
-
-[ "$ARM32" -o "$ARM64" ] && {
-	PEXPECT_LONG_TIMEOUT=' --pexpect-timeout=300'
-	HTTP_LONG_TIMEOUT='MMGEN_HTTP_TIMEOUT=300 '
-}
 
 if [ -e '/etc/os-release' ]; then
 	DISTRO=$(grep '^ID=' '/etc/os-release' | cut -c 4-)
@@ -361,15 +372,24 @@ do
 		tooltest_py+=" --verbose"
 		mmgen_tool+=" --verbose"
 		objattrtest_py+=" --verbose"
-		scrambletest_py+=" --verbose"
-		pylint+=" --verbose" ;;
+		pylint+=" --verbose"
+		scrambletest_py+=" --verbose" ;;
 	X)  IN_REEXEC=1 ;;
 	*)  exit ;;
 	esac
 done
 
-[ "$MMGEN_DISABLE_COLOR" ] || {
-	RED="\e[31;1m" GREEN="\e[32;1m" YELLOW="\e[33;1m" BLUE="\e[34;1m" MAGENTA="\e[35;1m" CYAN="\e[36;1m"
+in_nix_environment && SKIP_PARITY=1
+[ "$SOC" ] && SKIP_PARITY=1
+
+[ "$MMGEN_DISABLE_COLOR" -o ! -t 1 ] || {
+	GRAY="\e[30;1m"
+	RED="\e[31;1m"
+	GREEN="\e[32;1m"
+	YELLOW="\e[33;1m"
+	BLUE="\e[34;1m"
+	MAGENTA="\e[35;1m"
+	CYAN="\e[36;1m"
 	RESET="\e[0m"
 }
 
@@ -411,6 +431,8 @@ remove_skipped_tests
 check_tests
 
 test/clean.py
+
+install_secp256k1_mod_maybe
 
 start_time=$(date +%s)
 

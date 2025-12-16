@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,20 +30,20 @@ class AddrIdxList(tuple, InitErrors, MMGenObject):
 
 	max_len = 1000000
 
-	def __new__(cls, fmt_str=None, idx_list=None, sep=','):
+	def __new__(cls, *, fmt_str=None, idx_list=None, sep=','):
 		try:
 			if fmt_str:
 				def gen():
-					for i in (fmt_str.split(sep)):
-						j = [int(x) for x in i.split('-')]
-						if len(j) == 1:
-							yield j[0]
-						elif len(j) == 2:
-							if j[0] > j[1]:
+					for i in fmt_str.split(sep):
+						match [int(x) for x in i.split('-')]:
+							case [a]:
+								yield a
+							case [a, b]:
+								if a > b:
+									raise ValueError(f'{i}: invalid range')
+								yield from range(a, b + 1)
+							case _:
 								raise ValueError(f'{i}: invalid range')
-							yield from range(j[0], j[1] + 1)
-						else:
-							raise ValueError(f'{i}: invalid range')
 				idx_list = tuple(gen())
 			return tuple.__new__(cls, sorted({AddrIdx(i) for i in (idx_list or [])}))
 		except Exception as e:
@@ -103,7 +103,7 @@ class AddrListIDStr(HiliteStr):
 	color = 'green'
 	trunc_ok = False
 
-	def __new__(cls, addrlist, fmt_str=None):
+	def __new__(cls, addrlist, *, fmt_str=None):
 		idxs = [e.idx for e in addrlist.data]
 		prev = idxs[0]
 		ret = [prev]
@@ -159,7 +159,8 @@ class AddrList(MMGenObject): # Address info for a single seed ID
 			self,
 			cfg,
 			proto,
-			addrfile  = '',
+			*,
+			infile    = '',
 			al_id     = '',
 			adata     = [],
 			seed      = '',
@@ -185,11 +186,13 @@ class AddrList(MMGenObject): # Address info for a single seed ID
 		if seed and addr_idxs:   # data from seed + idxs
 			self.al_id = AddrListID(sid=seed.sid, mmtype=MMGenAddrType(proto, mmtype or proto.dfl_mmtype))
 			src = 'gen'
-			adata = self.generate(seed, addr_idxs if isinstance(addr_idxs, AddrIdxList) else AddrIdxList(addr_idxs))
+			adata = self.generate(
+				seed,
+				addr_idxs if isinstance(addr_idxs, AddrIdxList) else AddrIdxList(fmt_str=addr_idxs))
 			do_chksum = True
-		elif addrfile:           # data from MMGen address file
-			self.infile = addrfile
-			adata = self.file.parse_file(addrfile) # sets self.al_id
+		elif infile:             # data from MMGen address file
+			self.infile = infile
+			adata = self.file.parse_file(infile) # sets self.al_id
 			do_chksum = True
 		elif al_id and adata:    # data from tracking wallet
 			self.al_id = al_id

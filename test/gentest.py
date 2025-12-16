@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -106,9 +106,11 @@ EXAMPLES:
 
 SUPPORTED EXTERNAL TOOLS:
 
-  + ethkey (for ETH, ETC)
-    https://github.com/openethereum/openethereum
-    (build with 'cargo build -p ethkey-cli --release')
+  + eth-keys (for ETH, ETC)
+    https://github.com/ethereum/eth-keys
+
+  + ethkey (eth-keys alternative for MSYS2, or if eth-keys is unavailable)
+    https://github.com/openethereum/openethereum/releases/tag/v3.1.0
 
   + zcash-mini (for Zcash-Z addresses and view keys)
     https://github.com/FiloSottile/zcash-mini
@@ -136,7 +138,7 @@ SUPPORTED EXTERNAL TOOLS:
 }
 
 def get_cmd_output(cmd, input=None):
-	return run(cmd, input=input, stdout=PIPE, stderr=DEVNULL).stdout.decode().splitlines()
+	return run(cmd, input=input, stdout=PIPE, stderr=DEVNULL, text=True).stdout.splitlines()
 
 saved_results = {}
 
@@ -163,19 +165,29 @@ class GenTool:
 				self.data[key] = sd(**{'reduced':sec.hex()}, **ret._asdict())
 			return ret
 
-class GenToolEthkey(GenTool):
-	desc = 'ethkey'
+class GenToolEth_keys(GenTool):
+	desc = 'eth-keys'
 
 	def __init__(self, *args, **kwargs):
-		self.cmdname = get_ethkey()
+		self.keys = self.cmdname = None
+		try:
+			from eth_keys import keys
+			self.keys = keys
+		except ImportError:
+			self.cmdname = get_ethkey()
+			self.desc = 'ethkey'
+		if not (self.keys or self.cmdname):
+			die(2, 'Neither the ‘eth-keys’ package nor the ‘ethkey’ executable '
+				'could be found on the system!')
 		super().__init__(*args, **kwargs)
 
 	def run(self, sec, vcoin):
-		o = get_cmd_output([self.cmdname, 'info', sec.hex()])
-		return gtr(
-			o[0].split()[1],
-			o[-1].split()[1],
-			None)
+		if self.keys:
+			sk = self.keys.PrivateKey(sec)
+			return gtr(str(sk)[2:], sk.public_key.to_address()[2:], None)
+		else:
+			o = get_cmd_output([self.cmdname, 'info', sec.hex()])
+			return gtr(o[0].split()[1], o[-1].split()[1], None)
 
 class GenToolKeyconv(GenTool):
 	desc = 'keyconv'
@@ -189,7 +201,7 @@ class GenToolKeyconv(GenTool):
 class GenToolZcash_mini(GenTool):
 	desc = 'zcash-mini'
 	def run(self, sec, vcoin):
-		o = get_cmd_output(['zcash-mini', '-key', '-simple'], input=(sec.wif+'\n').encode())
+		o = get_cmd_output(['zcash-mini', '-key', '-simple'], input=sec.wif+'\n')
 		return gtr(o[1], o[0], o[-1])
 
 class GenToolPycoin(GenTool):
@@ -325,7 +337,7 @@ def do_ab_test(proto, scfg, addr_type, gen1, kg2, ag, tool, cache_data):
 			for _ in range(scfg.rounds):
 				yield getrand(32)
 
-	kg1 = KeyGenerator(cfg, proto, addr_type.pubkey_type, gen1)
+	kg1 = KeyGenerator(cfg, proto, addr_type.pubkey_type, backend=gen1)
 	if type(kg1) == type(kg2):
 		die(4, 'Key generators are the same!')
 
@@ -381,7 +393,7 @@ def ab_test(proto, scfg):
 
 	if scfg.gen2:
 		assert scfg.gen1 != 'all', "'all' must be used only with external tool"
-		kg2 = KeyGenerator(cfg, proto, addr_type.pubkey_type, scfg.gen2)
+		kg2 = KeyGenerator(cfg, proto, addr_type.pubkey_type, backend=scfg.gen2)
 		tool = None
 	else:
 		toolname = find_or_check_tool(proto, addr_type, scfg.tool)
@@ -478,57 +490,44 @@ def get_protos(proto, addr_type, toolname):
 
 def parse_args():
 
-	if len(cfg._args) != 2:
-		cfg._usage()
+	all_backends, gen2, tool = (False, None, None)
 
-	arg1, arg2 = cfg._args
-	gen1, gen2, rounds = (0, 0, 0)
-	tool, all_backends, dumpfile = (None, None, None)
+	match cfg._args:
+		case (gen1, rounds) if is_int(gen1) and is_int(rounds):
+			test, dumpfile = ('speed', None)
+		case (gen1, dumpfile) if is_int(gen1) and os.access(dumpfile, os.R_OK):
+			test, rounds = ('dump', None)
+		case (ab, rounds) if (ab := ab.split(':')) and is_int(rounds):
+			test, dumpfile = ('ab', None)
 
-	if is_int(arg1) and is_int(arg2):
-		test = 'speed'
-		gen1 = arg1
-		rounds = arg2
-	elif is_int(arg1) and os.access(arg2, os.R_OK):
-		test = 'dump'
-		gen1 = arg1
-		dumpfile = arg2
-	else:
-		test = 'ab'
-		rounds = arg2
+			match ab[0]:
+				case x if is_int(x):
+					gen1 = x
+				case 'all':
+					all_backends = True
+					gen1 = None
+				case _:
+					die(1, "First part of first argument must be a generator backend number or 'all'")
 
-		if not is_int(arg2):
-			die(1, 'Second argument must be dump filename or integer rounds specification')
-
-		try:
-			a, b = arg1.split(':')
-		except:
-			die(1, 'First argument must be a generator backend number or two colon-separated arguments')
-
-		if is_int(a):
-			gen1 = a
-		else:
-			if a == 'all':
-				all_backends = True
-			else:
-				die(1, "First part of first argument must be a generator backend number or 'all'")
-
-		if is_int(b):
-			if cfg.all_coins:
-				die(1, '--all-coins must be used with external tool only')
-			gen2 = b
-		else:
-			tool = b
-			ext_progs = list(cinfo.external_tests[cfg._proto.network]) + ['ext']
-			if b not in ext_progs:
-				die(1, f'Second part of first argument must be a generator backend number or one of {ext_progs}')
+			match ab[1]:
+				case x if is_int(x):
+					if cfg.all_coins:
+						die(1, '--all-coins must be used with external tool only')
+					gen2 = x
+				case x:
+					tool = x
+					ext_progs = list(cinfo.external_tests[cfg._proto.network]) + ['ext']
+					if tool not in ext_progs:
+						die(1, f'Second part of first argument must be a generator backend number or one of {ext_progs}')
+		case _:
+			cfg._usage()
 
 	return namedtuple('parsed_args',
 			['test', 'gen1', 'gen2', 'rounds', 'tool', 'all_backends', 'dumpfile'])(
 		test,
-		int(gen1) or None,
-		int(gen2) or None,
-		int(rounds) or None,
+		None if gen1 is None else int(gen1),
+		None if gen2 is None else int(gen2),
+		None if rounds is None else int(rounds),
 		tool,
 		all_backends,
 		dumpfile)
@@ -539,17 +538,19 @@ def main():
 
 	addr_type = MMGenAddrType(proto=proto, id_str=cfg.type or proto.dfl_mmtype)
 
-	if scfg.test == 'ab':
-		protos = get_protos(proto, addr_type, scfg.tool) if cfg.all_coins else [proto]
-		for p in protos:
-			ab_test(p, scfg)
-	else:
-		kg = KeyGenerator(cfg, proto, addr_type.pubkey_type, scfg.gen1)
-		ag = AddrGenerator(cfg, proto, addr_type)
-		if scfg.test == 'speed':
-			speed_test(proto, kg, ag, scfg.rounds)
-		elif scfg.test == 'dump':
-			dump_test(proto, kg, ag, scfg.dumpfile)
+	match scfg.test:
+		case 'ab':
+			protos = get_protos(proto, addr_type, scfg.tool) if cfg.all_coins else [proto]
+			for p in protos:
+				ab_test(p, scfg)
+		case 'speed' | 'dump':
+			kg = KeyGenerator(cfg, proto, addr_type.pubkey_type, backend=scfg.gen1)
+			ag = AddrGenerator(cfg, proto, addr_type)
+			match scfg.test:
+				case 'speed':
+					speed_test(proto, kg, ag, scfg.rounds)
+				case 'dump':
+					dump_test(proto, kg, ag, scfg.dumpfile)
 
 	if saved_results:
 		import json
@@ -565,7 +566,6 @@ from mmgen.key import PrivKey
 from mmgen.addr import MMGenAddrType
 from mmgen.addrgen import KeyGenerator, AddrGenerator
 from mmgen.keygen import get_backends
-from mmgen.util2 import load_cryptodomex
 from test.include.common import getrand, get_ethkey, set_globals
 
 gtr = namedtuple('gen_tool_result', ['wif', 'addr', 'viewkey'])
@@ -582,9 +582,9 @@ vmsg = cfg._util.vmsg
 
 proto = cfg._proto
 
-if proto.coin == 'XMR':
-	# This must be done at top level, not in monero tool __init__
-	load_cryptodomex()
+if proto.coin in ('ETH', 'ETC', 'XMR'):
+	from mmgen.util2 import load_cryptodome
+	load_cryptodome()
 
 if __name__ == '__main__':
 	from mmgen.main import launch

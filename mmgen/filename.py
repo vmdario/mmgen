@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ from .util import die, get_extension
 
 class File:
 
-	def __init__(self, fn, write=False):
+	def __init__(self, fn, *, write=False):
 
 		self.name     = fn
 		self.dirname  = os.path.dirname(fn)
@@ -42,7 +42,7 @@ class File:
 
 		import stat
 		if stat.S_ISBLK(st.st_mode):
-			if sys.platform in ('win32',):
+			if sys.platform == 'win32':
 				die(2, 'Access to raw block devices not supported on platform {sys.platform!r}')
 			mode = (os.O_RDONLY, os.O_RDWR)[bool(write)]
 			try:
@@ -52,11 +52,12 @@ class File:
 					die(2, f'{fn!r}: permission denied')
 #				if e.errno != 17: raise
 			else:
-				if sys.platform == 'linux':
-					self.size = os.lseek(fd, 0, os.SEEK_END)
-				elif sys.platform == 'darwin':
-					from .platform.darwin.util import get_device_size
-					self.size = get_device_size(fn)
+				match sys.platform:
+					case 'linux':
+						self.size = os.lseek(fd, 0, os.SEEK_END)
+					case 'darwin':
+						from .platform.darwin.util import get_device_size
+						self.size = get_device_size(fn)
 				os.close(fd)
 		else:
 			self.size  = st.st_size
@@ -66,21 +67,21 @@ class File:
 
 class FileList(list):
 
-	def __init__(self, fns, write=False):
+	def __init__(self, fns, *, write=False):
 		list.__init__(
 			self,
-			[File(fn, write) for fn in fns])
+			[File(fn, write=write) for fn in fns])
 
 	def names(self):
 		return [f.name for f in self]
 
-	def sort_by_age(self, key='mtime', reverse=False):
+	def sort_by_age(self, *, key='mtime', reverse=False):
 		assert key in ('atime', 'ctime', 'mtime'), f'{key!r}: invalid sort key'
 		self.sort(key=lambda a: getattr(a, key), reverse=reverse)
 
 class MMGenFile(File):
 
-	def __init__(self, fn, base_class=None, subclass=None, proto=None, write=False):
+	def __init__(self, fn, *, base_class=None, subclass=None, proto=None, write=False):
 		"""
 		'base_class' - a base class with an 'ext_to_cls' method
 		'subclass'   - a subclass with an 'ext' attribute
@@ -91,7 +92,7 @@ class MMGenFile(File):
 		attribute to True.
 		"""
 
-		super().__init__(fn, write)
+		super().__init__(fn, write=write)
 
 		assert (subclass or base_class) and not (subclass and base_class), 'MMGenFile chk1'
 
@@ -107,12 +108,12 @@ class MMGenFile(File):
 
 class MMGenFileList(FileList):
 
-	def __init__(self, fns, base_class, proto=None, write=False):
+	def __init__(self, fns, base_class, *, proto=None, write=False):
 		list.__init__(
 			self,
 			[MMGenFile(fn, base_class=base_class, proto=proto, write=write) for fn in fns])
 
-def find_files_in_dir(subclass, fdir, no_dups=False):
+def find_files_in_dir(subclass, fdir, *, no_dups=False):
 
 	assert isinstance(subclass, type), f'{subclass}: not a class'
 
@@ -122,12 +123,13 @@ def find_files_in_dir(subclass, fdir, no_dups=False):
 	matches = [l for l in os.listdir(fdir) if l.endswith('.'+subclass.ext)]
 
 	if no_dups:
-		if len(matches) == 1:
-			return os.path.join(fdir, matches[0])
-		elif matches:
-			die(1, f'ERROR: more than one {subclass.__name__} file in directory {fdir!r}')
-		else:
-			return None
+		match matches:
+			case [a]:
+				return os.path.join(fdir, a)
+			case []:
+				return None
+			case _:
+				die(1, f'ERROR: more than one {subclass.__name__} file in directory {fdir!r}')
 	else:
 		return [os.path.join(fdir, m) for m in matches]
 

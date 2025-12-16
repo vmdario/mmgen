@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -38,14 +38,13 @@ class MoneroWalletOutputsFile:
 			'outputs_data_hex',
 			'signed_key_images',
 			'sign',
-			'imported',
-		])
+			'imported'])
 
 		def __init__(self, cfg):
 			self.name = type(self).__name__
 			self.cfg = cfg
 
-		def write(self, add_suf='', quiet=False):
+		def write(self, *, add_suf='', quiet=False):
 			from ...fileutil import write_data_to_file
 			write_data_to_file(
 				cfg               = self.cfg,
@@ -62,16 +61,14 @@ class MoneroWalletOutputsFile:
 				wallet_fn.parent) / self.fn_fs.format(
 					a = wallet_fn.name,
 					b = self.base_chksum,
-					c = self.ext,
-				)
+					c = self.ext)
 
 		def get_wallet_fn(self, fn):
 			assert fn.name.endswith(f'.{self.ext}'), (
-				f'{self.name}: filename does not end with {"."+self.ext!r}'
-			)
+				f'{self.name}: filename does not end with {"."+self.ext!r}')
 			return fn.parent / fn.name[:-(len(self.ext)+self.ext_offset+1)]
 
-		def get_info(self, indent=''):
+		def get_info(self, *, indent=''):
 			if self.data.signed_key_images is not None:
 				data = self.data.signed_key_images or []
 				return f'{indent}{self.wallet_fn.name}: {len(data)} signed key image{suf(data)}'
@@ -81,22 +78,21 @@ class MoneroWalletOutputsFile:
 	class New(Base):
 		ext = 'raw'
 
-		def __init__(self, parent, wallet_fn, data, wallet_idx=None, sign=False):
+		def __init__(self, parent, wallet_fn, data, *, wallet_idx=None, sign=False):
 			super().__init__(parent.cfg)
 			self.wallet_fn = wallet_fn
 			init_data = dict.fromkeys(self.data_tuple._fields)
 			init_data.update({
 				'seed_id':      parent.kal.al_id.sid,
-				'wallet_index': wallet_idx or parent.get_idx_from_fn(wallet_fn),
-			})
+				'wallet_index': wallet_idx or parent.get_idx_from_fn(wallet_fn)})
 			if sign:
 				init_data['sign'] = sign
-			init_data.update({k:v for k, v in data.items() if k in init_data})
+			init_data.update({k: v for k, v in data.items() if k in init_data})
 			self.data = self.data_tuple(**init_data)
 
 	class Completed(New):
 
-		def __init__(self, parent, fn=None, wallet_fn=None):
+		def __init__(self, parent, *, fn=None, wallet_fn=None):
 			def check_equal(desc, a, b):
 				assert a == b, f'{desc} mismatch: {a} (from file) != {b} (from filename)'
 			fn = fn or self.get_outfile(parent.cfg, wallet_fn)
@@ -110,18 +106,16 @@ class MoneroWalletOutputsFile:
 				parent     = parent,
 				wallet_fn  = wallet_fn,
 				data       = data,
-				wallet_idx = wallet_idx,
-			)
+				wallet_idx = wallet_idx)
 			self.check_checksums(d_wrap)
 
 		@classmethod
-		def find_fn_from_wallet_fn(cls, cfg, wallet_fn, ret_on_no_match=False):
+		def find_fn_from_wallet_fn(cls, cfg, wallet_fn, *, ret_on_no_match=False):
 			path = get_autosign_obj(cfg).xmr_outputs_dir or Path()
 			pat = cls.fn_fs.format(
 				a = wallet_fn.name,
 				b = f'[0-9a-f]{{{cls.chksum_nchars}}}\\',
-				c = cls.ext,
-			)
+				c = cls.ext)
 			matches = [f for f in path.iterdir() if re.match(pat, f.name)]
 			if not matches and ret_on_no_match:
 				return None
@@ -129,8 +123,7 @@ class MoneroWalletOutputsFile:
 				die(2, "{a} matching pattern {b!r} found in '{c}'!".format(
 					a = 'No files' if not matches else 'More than one file',
 					b = pat,
-					c = path
-				))
+					c = path))
 			return matches[0]
 
 	class Unsigned(Completed):
@@ -155,8 +148,7 @@ class MoneroWalletDumpFile:
 		data_tuple = namedtuple('wallet_dump_data', [
 			'seed_id',
 			'wallet_index',
-			'wallet_metadata',
-		])
+			'wallet_metadata'])
 		def get_outfile(self, cfg, wallet_fn):
 			return wallet_fn.parent / f'{wallet_fn.name}.{self.ext}'
 

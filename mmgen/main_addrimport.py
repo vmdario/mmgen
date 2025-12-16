@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -81,37 +81,32 @@ addrimport_msgs = {
 	"""
 }
 
-def parse_cmd_args(rpc, cmd_args):
+def parse_cmd_args(cmd_args):
 
 	def import_mmgen_list(infile):
-		al = (AddrList, KeyAddrList)[bool(cfg.keyaddr_file)](cfg, proto, infile)
-		if al.al_id.mmtype in ('S', 'B'):
-			if not rpc.info('segwit_is_active'):
-				die(2, 'Segwit is not active on this chain. Cannot import Segwit addresses')
-		return al
+		return (AddrList, KeyAddrList)[bool(cfg.keyaddr_file)](cfg, proto, infile=infile)
 
-	if len(cmd_args) == 1:
-		infile = cmd_args[0]
-		from .fileutil import check_infile, get_lines_from_file
-		check_infile(infile)
-		if cfg.addrlist:
-			al = AddrList(
-				cfg      = cfg,
-				proto    = proto,
-				addrlist = get_lines_from_file(
-					cfg,
-					infile,
-					f'non-{gc.proj_name} addresses',
-					trim_comments = True))
-		else:
-			al = import_mmgen_list(infile)
-	elif len(cmd_args) == 0 and cfg.address:
-		al = AddrList(cfg, proto=proto, addrlist=[cfg.address])
-		infile = 'command line'
-	else:
-		die(1, addrimport_msgs['bad_args'])
-
-	return al, infile
+	match cmd_args:
+		case [infile]:
+			from .fileutil import check_infile, get_lines_from_file
+			check_infile(infile)
+			if cfg.addrlist:
+				return (
+					AddrList(
+						cfg      = cfg,
+						proto    = proto,
+						addrlist = get_lines_from_file(
+							cfg,
+							infile,
+							desc = f'non-{gc.proj_name} addresses',
+							trim_comments = True)),
+					infile)
+			else:
+				return (import_mmgen_list(infile), infile)
+		case [] if cfg.address:
+			return (AddrList(cfg, proto=proto, addrlist=[cfg.address]), 'command line')
+		case _:
+			die(1, addrimport_msgs['bad_args'])
 
 def check_opts(twctl):
 	batch = bool(cfg.batch)
@@ -123,11 +118,11 @@ def check_opts(twctl):
 
 	if rescan and not cfg.quiet:
 		from .ui import keypress_confirm
-		if not keypress_confirm(
-				cfg,
-				f'\n{addrimport_msgs["rescan"]}\n\nContinue?',
-				default_yes = True):
-			die(1, 'Exiting at user request')
+		keypress_confirm(
+			cfg,
+			f'\n{addrimport_msgs["rescan"]}\n\nContinue?',
+			default_yes = True,
+			do_exit = True)
 
 	if batch and not 'batch' in twctl.caps:
 		msg(f"‘--batch’ ignored: not supported by {type(twctl).__name__}")
@@ -137,8 +132,6 @@ def check_opts(twctl):
 
 async def main():
 	from .tw.ctl import TwCtl
-	if cfg.token_addr:
-		proto.tokensym = 'foo' # hack to trigger 'Token' in proto.base_proto_subclass()
 
 	twctl = await TwCtl(
 		cfg        = cfg,
@@ -152,7 +145,7 @@ async def main():
 	for k, v in addrimport_msgs.items():
 		addrimport_msgs[k] = fmt(v, indent='  ', strip_char='\t').rstrip()
 
-	al, infile = parse_cmd_args(twctl.rpc, cfg._args)
+	al, infile = parse_cmd_args(cfg._args)
 
 	cfg._util.qmsg(
 		f'OK. {al.num_addrs} addresses'
@@ -185,4 +178,4 @@ cfg = Config(opts_data=opts_data, need_amt=False)
 
 proto = cfg._proto
 
-async_run(main())
+async_run(cfg, main)

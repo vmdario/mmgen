@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -64,7 +64,7 @@ class BitcoinTwRPC(TwRPC):
 		return [label_addr_pair(label, CoinAddr(self.proto, addrs[0]))
 			for label, addrs in zip(acct_labels, acct_addrs)]
 
-	async def get_unspent_by_mmid(self, minconf=1, mmid_filter=[]):
+	async def get_unspent_by_mmid(self, *, minconf=1, mmid_filter=[]):
 		"""
 		get unspent outputs in tracking wallet, compute balances per address
 		and return a dict with elements {'twmmid': {'addr', 'lbl', 'amt'}}

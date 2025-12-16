@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -12,7 +12,7 @@
 tw.addresses: Tracking wallet listaddresses class for the MMGen suite
 """
 
-from ..util import msg, suf, is_int
+from ..util import msg, is_int, die
 from ..obj import MMGenListItem, ImmutableAttr, ListItemAttr, TwComment, NonNegativeInt
 from ..addr import CoinAddr, MMGenID, MMGenAddrType
 from ..amt import CoinAmtChk
@@ -25,16 +25,37 @@ class TwAddresses(TwView):
 	hdr_lbl = 'tracking wallet addresses'
 	desc = 'address list'
 	item_desc = 'address'
+	item_desc_pl = 'addresses'
 	sort_key = 'twmmid'
 	update_widths_on_age_toggle = True
 	print_output_types = ('detail',)
 	filters = ('showempty', 'showused', 'all_labels')
 	showcoinaddrs = True
 	showempty = True
-	showused = 1 # tristate: 0:no, 1:yes, 2:all
+	showused = 1 # tristate: 0: no, 1: yes, 2: only
 	all_labels = False
-	no_data_errmsg = 'No addresses in tracking wallet!'
 	mod_subpath = 'tw.addresses'
+
+	prompt_fs_in = [
+		'Sort options: [a]mt, [M]mgen addr, [r]everse',
+		'Filters: show [E]mpty addrs, show all [L]abels',
+		'View/Print: pager [v]iew, [w]ide pager view, [p]rint, r[e]draw{s}',
+		'Actions: [q]uit menu, [D]elete addr, add [l]abel, [R]efresh balance:']
+
+	key_mappings = {
+		'a':'s_amt',
+		'M':'s_twmmid',
+		'r':'s_reverse',
+		'e':'d_redraw',
+		'E':'d_showempty',
+		'L':'d_all_labels',
+		'l':'i_comment_add',
+		'D':'i_addr_delete',
+		'v':'a_view',
+		'w':'a_view_detail',
+		'p':'a_print_detail'}
+	extra_key_mappings = {
+		'R':'i_balance_refresh'}
 
 	class display_type(TwView.display_type):
 
@@ -47,7 +68,16 @@ class TwAddresses(TwView):
 			fmt_method = 'gen_display'
 
 	class TwAddress(MMGenListItem):
-		valid_attrs = {'twmmid', 'addr', 'al_id', 'confs', 'comment', 'amt', 'recvd', 'date', 'skip'}
+		valid_attrs = {
+			'twmmid',
+			'addr',
+			'al_id',
+			'confs',
+			'comment',
+			'amt',
+			'recvd',
+			'is_used',
+			'date'}
 		invalid_attrs = {'proto'}
 
 		twmmid  = ImmutableAttr(TwMMGenID, include_proto=True) # contains confs,txid(unused),date(unused),al_id
@@ -57,8 +87,8 @@ class TwAddresses(TwView):
 		comment = ListItemAttr(TwComment, reassign_ok=True)
 		amt     = ImmutableAttr(CoinAmtChk, include_proto=True)
 		recvd   = ImmutableAttr(CoinAmtChk, include_proto=True)
+		is_used = ImmutableAttr(bool)
 		date    = ListItemAttr(int, typeconv=False, reassign_ok=True)
-		skip    = ListItemAttr(str, typeconv=False, reassign_ok=True)
 
 		def __init__(self, proto, **kwargs):
 			self.__dict__['proto'] = proto
@@ -68,21 +98,24 @@ class TwAddresses(TwView):
 	def coinaddr_list(self):
 		return [d.addr for d in self.data]
 
-	async def __init__(self, cfg, proto, minconf=1, mmgen_addrs='', get_data=False):
+	async def __init__(self, cfg, proto, *, minconf=1, mmgen_addrs='', get_data=False):
 
 		await super().__init__(cfg, proto)
 
 		self.minconf = NonNegativeInt(minconf)
+		self.spc_w = 5 + self.has_age + self.has_used # 1 space between cols + 1 leading space in fs
+		self.used_w = 4 if self.has_used else 0
 
 		if mmgen_addrs:
-			a = mmgen_addrs.rsplit(':', 1)
-			if len(a) != 2:
-				from ..util import die
-				die(1,
-					f'{mmgen_addrs}: invalid address list argument ' +
-					'(must be in form <seed ID>:[<type>:]<idx list>)')
-			from ..addrlist import AddrIdxList
-			self.usr_addr_list = [MMGenID(self.proto, f'{a[0]}:{i}') for i in AddrIdxList(a[1])]
+			match mmgen_addrs.rsplit(':', 1):
+				case [mmid, fmt_str]:
+					from ..addrlist import AddrIdxList
+					self.usr_addr_list = [
+						MMGenID(self.proto, f'{mmid}:{i}') for i in AddrIdxList(fmt_str=fmt_str)]
+				case _:
+					die(1,
+						f'{mmgen_addrs}: invalid address list argument ' +
+						'(must be in form <seed ID>:[<type>:]<idx list>)')
 		else:
 			self.usr_addr_list = []
 
@@ -94,7 +127,29 @@ class TwAddresses(TwView):
 		return 'No addresses {}found!'.format(
 			f'with {self.minconf} confirmations ' if self.minconf else '')
 
-	async def gen_data(self, rpc_data, lbl_id):
+	async def get_rpc_data(self):
+
+		self.total = self.proto.coin_amt('0')
+		addrs = {}
+
+		used_addrs = self.twctl.used_addrs
+		minconf = int(self.minconf)
+		block = self.twctl.rpc.get_block_from_minconf(minconf)
+
+		for e in await self.twctl.get_label_addr_pairs():
+			bal = await self.twctl.get_balance(e.coinaddr, block=block)
+			addrs[e.label.mmid] = {
+				'addr':    e.coinaddr,
+				'amt':     bal,
+				'recvd':   bal,         # current bal only, CF btc.tw.addresses.get_rpc_data()
+				'is_used': bool(bal) or e.coinaddr in used_addrs,
+				'confs':   minconf,
+				'lbl':     e.label}
+			self.total += bal
+
+		return addrs
+
+	def gen_data(self, rpc_data, lbl_id):
 		return (
 			self.TwAddress(
 					self.proto,
@@ -105,50 +160,50 @@ class TwAddresses(TwView):
 					comment = data['lbl'].comment,
 					amt     = data['amt'],
 					recvd   = data['recvd'],
-					date    = 0,
-					skip    = '')
-				for twmmid, data in rpc_data.items()
-		)
+					is_used = data['is_used'],
+					date    = 0)
+				for twmmid, data in rpc_data.items())
 
-	def filter_data(self):
+	def get_disp_data(self):
 		if self.usr_addr_list:
-			return (d for d in self.data if d.twmmid.obj in self.usr_addr_list)
+			for d in self.data:
+				if d.twmmid.obj in self.usr_addr_list:
+					yield d
 		else:
-			return (d for d in self.data if
-				(self.all_labels and d.comment) or
-				(self.showused == 2 and d.recvd) or
-				(not (d.recvd and not self.showused) and (d.amt or self.showempty))
-			)
+			for d in self.data:
+				if self.all_labels and d.comment:
+					yield d
+				else:
+					if not (self.showempty or d.amt):
+						continue
+					match self.showused: # tristate: 0:no, 1:yes, 2:only
+						case 0:
+							if not d.is_used:
+								yield d
+						case 1:
+							yield d
+						case 2:
+							if d.is_used:
+								yield d
 
-	def get_column_widths(self, data, wide, interactive):
-
-		return self.compute_column_widths(
+	def get_column_widths(self, data, *, wide):
+		return self.column_widths_data(
 			widths = { # fixed cols
-				'num':  max(2, len(str(len(data)))+1),
-				'mmid': max(len(d.twmmid.disp) for d in data),
-				'used': 4,
-				'amt':  self.amt_widths['amt'],
-				'date': self.age_w if self.has_age else 0,
-				'block': self.age_col_params['block'][0] if wide and self.has_age else 0,
+				'num':       max(2, len(str(len(data)))+1),
+				'mmid':      max(len(d.twmmid.disp) for d in data),
+				'used':      self.used_w,
+				'amt':       self.amt_widths['amt'],
+				'date':      self.age_w if self.has_age else 0,
+				'block':     self.age_col_params['block'][0] if wide and self.has_age else 0,
 				'date_time': self.age_col_params['date_time'][0] if wide and self.has_age else 0,
-				'spc':  7, # 6 spaces between cols + 1 leading space in fs
-			},
+				'spc':       self.spc_w},
 			maxws = { # expandable cols
 				'addr':    max(len(d.addr) for d in data) if self.showcoinaddrs else 0,
-				'comment': max(d.comment.screen_width for d in data),
-			},
+				'comment': max(d.comment.screen_width for d in data)},
 			minws = {
-				'addr': 12 if self.showcoinaddrs else 0,
-				'comment': len('Comment'),
-			},
-			maxws_nice = {'addr': 18},
-			wide = wide,
-			interactive = interactive,
-		)
-
-	def gen_subheader(self, cw, color):
-		if self.minconf:
-			yield f'Displaying balances with at least {self.minconf} confirmation{suf(self.minconf)}'
+				'addr':    12 if self.showcoinaddrs else 0,
+				'comment': len('Comment')},
+			maxws_nice = {'addr': 18})
 
 	def squeezed_col_hdr(self, cw, fs, color):
 		return fs.format(
@@ -174,22 +229,21 @@ class TwAddresses(TwView):
 	def squeezed_format_line(self, n, d, cw, fs, color, yes, no):
 		return fs.format(
 			n = str(n) + ')',
-			m = d.twmmid.fmt(width=cw.mmid, color=color),
-			u = yes if d.recvd else no,
-			a = d.addr.fmt(self.addr_view_pref, width=cw.addr, color=color),
-			c = d.comment.fmt2(width=cw.comment, color=color, nullrepl='-'),
-			A = d.amt.fmt(color=color, iwidth=cw.iwidth, prec=self.disp_prec),
-			d = self.age_disp(d, self.age_fmt)
-		)
+			m = d.twmmid.fmt(cw.mmid, color=color),
+			u = yes if d.is_used else no,
+			a = d.addr.fmt(self.addr_view_pref, cw.addr, color=color),
+			c = d.comment.fmt2(cw.comment, color=color, nullrepl='-'),
+			A = d.amt.fmt(cw.iwidth, color=color, prec=self.disp_prec),
+			d = self.age_disp(d, self.age_fmt))
 
 	def detail_format_line(self, n, d, cw, fs, color, yes, no):
 		return fs.format(
 			n = str(n) + ')',
-			m = d.twmmid.fmt(width=cw.mmid, color=color),
-			u = yes if d.recvd else no,
-			a = d.addr.fmt(self.addr_view_pref, width=cw.addr, color=color),
-			c = d.comment.fmt2(width=cw.comment, color=color, nullrepl='-'),
-			A = d.amt.fmt(color=color, iwidth=cw.iwidth, prec=self.disp_prec),
+			m = d.twmmid.fmt(cw.mmid, color=color),
+			u = yes if d.is_used else no,
+			a = d.addr.fmt(self.addr_view_pref, cw.addr, color=color),
+			c = d.comment.fmt2(cw.comment, color=color, nullrepl='-'),
+			A = d.amt.fmt(cw.iwidth, color=color, prec=self.disp_prec),
 			b = self.age_disp(d, 'block'),
 			D = self.age_disp(d, 'date_time'))
 
@@ -208,8 +262,13 @@ class TwAddresses(TwView):
 		if not self.dates_set:
 			bc = self.rpc.blockcount + 1
 			caddrs = [addr for addr in addrs if addr.confs]
-			hashes = await self.rpc.gathered_call('getblockhash', [(n,) for n in [bc - a.confs for a in caddrs]])
-			dates = [d['time'] for d in await self.rpc.gathered_call('getblockheader', [(h,) for h in hashes])]
+			hashes = await self.rpc.gathered_call(
+				'getblockhash',
+				[(n,) for n in [bc - a.confs for a in caddrs]])
+			dates = [d['time']
+				for d in await self.rpc.gathered_call(
+					'getblockheader',
+					[(h,) for h in hashes])]
 			for idx, addr in enumerate(caddrs):
 				addr.date = dates[idx]
 			self.dates_set = True
@@ -217,8 +276,7 @@ class TwAddresses(TwView):
 	sort_disp = {
 		'age': 'AddrListID+Age',
 		'amt': 'AddrListID+Amt',
-		'twmmid': 'MMGenID',
-	}
+		'twmmid': 'MMGenID'}
 
 	sort_funcs = {
 		'age': lambda d: '{}_{}_{}'.format(
@@ -227,8 +285,7 @@ class TwAddresses(TwView):
 			('{:>012}'.format(1_000_000_000 - d.confs) if d.confs else '_'),
 			d.twmmid.sort_key),
 		'amt': lambda d: f'{d.al_id}_{d.amt}',
-		'twmmid': lambda d: d.twmmid.sort_key,
-	}
+		'twmmid': lambda d: d.twmmid.sort_key}
 
 	@property
 	def dump_fn_pfx(self):
@@ -271,10 +328,10 @@ class TwAddresses(TwView):
 	def is_used(self, coinaddr):
 		for e in self.data:
 			if e.addr == coinaddr:
-				return bool(e.recvd)
+				return e.is_used
 		return None # addr not in tracking wallet
 
-	def get_change_address(self, al_id, bot=None, top=None, exclude=None):
+	def get_change_address(self, al_id, *, bot=None, top=None, exclude=None, desc=None):
 		"""
 		Get lowest-indexed unused address in tracking wallet for requested AddrListID.
 		Return values on failure:
@@ -316,7 +373,7 @@ class TwAddresses(TwView):
 			for d in data[start:]:
 				if d.al_id == al_id:
 					if (
-							not d.recvd
+							not d.is_used
 							and not d.twmmid in exclude
 							and (self.cfg.autochg_ignore_labels or not d.comment)
 						):
@@ -326,17 +383,19 @@ class TwAddresses(TwView):
 								d.twmmid.hl(),
 								yellow('has a label,'),
 								d.comment.hl2(encl='‘’'),
-								yellow(',\n  but allowing it for change anyway by user request')
+								yellow(f',\n  but allowing it for {desc} anyway by user request')
 							))
 						return d
 				else:
 					break
 			return False
 
-	def get_change_address_by_addrtype(self, mmtype, exclude=None):
+	def get_change_address_by_addrtype(self, mmtype, *, exclude, desc):
 		"""
 		Find the lowest-indexed change addresses in tracking wallet of given address type,
 		present them in a menu and return a single change address chosen by the user.
+
+		If mmtype is None, search all preferred_mmtypes in tracking wallet
 
 		Return values on failure:
 		    None:  no addresses in wallet of requested address type
@@ -352,9 +411,9 @@ class TwAddresses(TwView):
 					c = yellow(' <== has a label!') if d.comment else ''
 				)
 
-			prompt = '\nChoose a change address:\n\n{}\n\nEnter a number> '.format(
-				'\n'.join(format_line(n, d) for n, d in enumerate(addrs, 1))
-			)
+			prompt = '\nChoose a {desc}:\n\n{items}\n\nEnter a number> '.format(
+				desc = desc,
+				items = '\n'.join(format_line(n, d) for n, d in enumerate(addrs, 1)))
 
 			from ..ui import line_input
 			while True:
@@ -363,10 +422,25 @@ class TwAddresses(TwView):
 					return addrs[int(res)-1]
 				msg(f'{res}: invalid entry')
 
-		assert isinstance(mmtype, MMGenAddrType)
+		def get_addr(mmtype):
+			return [self.get_change_address(
+				f'{sid}:{mmtype}', bot=r.bot, top=r.top, exclude=exclude, desc=desc)
+					for sid, r in self.sid_ranges.items()]
 
-		res = [self.get_change_address(f'{sid}:{mmtype}', r.bot, r.top, exclude)
-				for sid, r in self.sid_ranges.items()]
+		assert isinstance(mmtype, type(None) | MMGenAddrType)
+
+		if mmtype:
+			res = get_addr(mmtype)
+		else:
+			have_used = False
+			for mmtype in self.proto.preferred_mmtypes:
+				res = get_addr(mmtype)
+				if any(res):
+					break
+				if False in res:
+					have_used = True
+			else:
+				return False if have_used else None
 
 		if any(res):
 			res = list(filter(None, res))

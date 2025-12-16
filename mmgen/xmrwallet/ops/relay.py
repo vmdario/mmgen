@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -41,7 +41,7 @@ class OpRelay(OpBase):
 			md = None
 		else:
 			from ...daemon import CoinDaemon
-			md = CoinDaemon(self.cfg, 'xmr', test_suite=self.cfg.test_suite)
+			md = CoinDaemon(self.cfg, network_id='xmr', test_suite=self.cfg.test_suite)
 			host, port = ('localhost', md.rpc_port)
 			proxy = None
 
@@ -62,26 +62,23 @@ class OpRelay(OpBase):
 		if self.cfg.tx_relay_daemon:
 			self.display_tx_relay_info(indent='    ')
 
-		if keypress_confirm(self.cfg, 'Relay transaction?'):
-			if self.cfg.tx_relay_daemon:
-				msg_r('Relaying transaction to remote daemon, please be patient...')
-				t_start = time.time()
-			res = self.dc.call_raw(
-				'send_raw_transaction',
-				tx_as_hex = self.tx.data.blob
-			)
-			if res['status'] == 'OK':
-				if res['not_relayed']:
-					msg('not relayed')
-					ymsg('Transaction not relayed')
-				else:
-					msg('success')
-				if self.cfg.tx_relay_daemon:
-					from ...util2 import format_elapsed_hr
-					msg(f'Relay time: {format_elapsed_hr(t_start, rel_now=False, show_secs=True)}')
-				gmsg('OK')
-				return True
+		keypress_confirm(self.cfg, 'Relay transaction?', do_exit=True)
+
+		if self.cfg.tx_relay_daemon:
+			msg_r('Relaying transaction to remote daemon, please be patient...')
+			t_start = time.time()
+
+		res = self.dc.call_raw('send_raw_transaction', tx_as_hex=self.tx.data.blob)
+		if res['status'] == 'OK':
+			if res['not_relayed']:
+				msg('not relayed')
+				ymsg('Transaction not relayed')
 			else:
-				die('RPCFailure', repr(res))
+				msg('success')
+			if self.cfg.tx_relay_daemon:
+				from ...util2 import format_elapsed_hr
+				msg(f'Relay time: {format_elapsed_hr(t_start, rel_now=False, show_secs=True)}')
+			gmsg('OK')
+			return True
 		else:
-			die(1, 'Exiting at user request')
+			die('RPCFailure', repr(res))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,14 +43,16 @@ class baseconv:
 	constants = {
 	'desc': {
 		'b58':   dt('base58',             'base58-encoded data'),
-		'b32':   dt('MMGen base32',       'MMGen base32-encoded data created using simple base conversion'),
+		'b32':   dt('MMGen base32',
+			'MMGen base32-encoded data created using simple base conversion'),
 		'b16':   dt('hexadecimal string', 'base16 (hexadecimal) string data'),
 		'b10':   dt('base10 string',      'base10 (decimal) string data'),
 		'b8':    dt('base8 string',       'base8 (octal) string data'),
 		'b6d':   dt('base6d (die roll)',  'base6 data using the digits from one to six'),
 		'mmgen': dt('MMGen native mnemonic',
-		'MMGen native mnemonic seed phrase created using old Electrum wordlist and simple base conversion'),
-	},
+			'MMGen native mnemonic seed phrase created using old Electrum wordlist '
+			'and simple base conversion')},
+
 	# https://en.wikipedia.org/wiki/Base32#RFC_4648_Base32_alphabet
 	# https://tools.ietf.org/html/rfc4648
 	'digits': {
@@ -59,24 +61,22 @@ class baseconv:
 		'b16': tuple('0123456789abcdef'),
 		'b10': tuple('0123456789'),
 		'b8':  tuple('01234567'),
-		'b6d': tuple('123456'),
-	},
+		'b6d': tuple('123456')},
+
 	'wl_chksum': {
-		'mmgen':  '5ca31424',
+		'mmgen':  '5ca31424'},
 #		'tirosh': '48f05e1f', # tirosh truncated to mn_base
 #		'tirosh1633': '1a5faeff' # tirosh list is 1633 words long!
-	},
+
 	'seedlen_map': {
 		'b58':   {16:22, 24:33, 32:44},
 		'b6d':   {16:50, 24:75, 32:100},
-		'mmgen': {16:12, 24:18, 32:24},
-	},
+		'mmgen': {16:12, 24:18, 32:24}},
+
 	'seedlen_map_rev': {
 		'b58':   {22:16, 33:24, 44:32},
 		'b6d':   {50:16, 75:24, 100:32},
-		'mmgen': {12:16, 18:24, 24:32},
-	}
-	}
+		'mmgen': {12:16, 18:24, 24:32}}}
 
 	def __init__(self, wl_id):
 
@@ -113,30 +113,37 @@ class baseconv:
 			die(3, 'ERROR: List is not sorted!')
 
 	@staticmethod
-	def get_pad(pad, seed_pad_func):
+	def get_pad(pad, /, seed_pad_func):
 		"""
 		'pad' argument to baseconv conversion methods must be either None, 'seed' or an integer.
 		If None, output of minimum (but never zero) length will be produced.
 		If 'seed', output length will be mapped from input length using data in seedlen_map.
 		If an integer, the string, hex string or byte output will be padded to this length.
 		"""
-		if pad is None:
-			return 0
-		elif type(pad) is int:
-			return pad
-		elif pad == 'seed':
-			return seed_pad_func()
-		else:
+
+		def do_die():
 			die('BaseConversionPadError', f"{pad!r}: illegal value for 'pad' (must be None, 'seed' or int)")
 
-	def tohex(self, words_arg, pad=None):
-		"convert string or list data of instance base to a hexadecimal string"
-		return self.tobytes(words_arg, pad//2 if type(pad) is int else pad).hex()
+		match pad:
+			case None:
+				return 0
+			case bool():
+				do_die()
+			case int():
+				return pad
+			case 'seed':
+				return seed_pad_func()
+			case _:
+				do_die()
 
-	def tobytes(self, words_arg, pad=None):
+	def tohex(self, words_arg, /, *, pad=None):
+		"convert string or list data of instance base to a hexadecimal string"
+		return self.tobytes(words_arg, pad=pad//2 if type(pad) is int else pad).hex()
+
+	def tobytes(self, words_arg, /, *, pad=None):
 		"convert string or list data of instance base to byte string"
 
-		words = words_arg if isinstance(words_arg, (list, tuple)) else tuple(words_arg.strip())
+		words = words_arg if isinstance(words_arg, list | tuple) else tuple(words_arg.strip())
 		desc = self.desc.short
 
 		if len(words) == 0:
@@ -163,7 +170,7 @@ class baseconv:
 		bl = ret.bit_length()
 		return ret.to_bytes(max(pad_val, bl//8+bool(bl%8)), 'big')
 
-	def fromhex(self, hexstr, pad=None, tostr=False):
+	def fromhex(self, hexstr, /, *, pad=None, tostr=False):
 		"convert a hexadecimal string to a list or string data of instance base"
 
 		from .util import is_hex_str
@@ -172,9 +179,9 @@ class baseconv:
 				('seed data' if pad == 'seed' else f'{hexstr!r}:') +
 				' not a hexadecimal string')
 
-		return self.frombytes(bytes.fromhex(hexstr), pad, tostr)
+		return self.frombytes(bytes.fromhex(hexstr), pad=pad, tostr=tostr)
 
-	def frombytes(self, bytestr, pad=None, tostr=False):
+	def frombytes(self, bytestr, /, *, pad=None, tostr=False):
 		"convert byte string to list or string data of instance base"
 
 		if not bytestr:

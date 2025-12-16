@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -14,12 +14,15 @@ proto.btc.tx.bump: Bitcoin transaction bump class
 
 from ....tx import bump as TxBase
 from ....util import msg
-from .new import New
+from .new_swap import NewSwap
 from .completed import Completed
 from .unsigned import AutomountUnsigned
 
-class Bump(Completed, New, TxBase.Bump):
+class Bump(Completed, NewSwap, TxBase.Bump):
 	desc = 'fee-bumped transaction'
+
+	def get_orig_rel_fee(self):
+		return self.fee_abs2rel(self.sum_inputs() - self.sum_outputs())
 
 	@property
 	def min_fee(self):
@@ -33,7 +36,7 @@ class Bump(Completed, New, TxBase.Bump):
 
 	def convert_and_check_fee(self, fee, desc):
 		ret = super().convert_and_check_fee(fee, desc)
-		if ret is False:
+		if ret is False or self.new_outputs:
 			return ret
 		if ret < self.min_fee:
 			msg('{} {c}: {} fee too small. Minimum fee: {} {c} ({} {})'.format(

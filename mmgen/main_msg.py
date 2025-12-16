@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -61,13 +61,13 @@ class MsgOps:
 
 	class verify(sign):
 
-		async def __init__(self, msgfile, addr=None):
+		async def __init__(self, msgfile, *, addr=None):
 			try:
 				m = SignedOnlineMsg(cfg, infile=msgfile)
 			except:
 				m = ExportedMsgSigs(cfg, infile=msgfile)
 
-			nSigs = await m.verify(addr)
+			nSigs = await m.verify(addr=addr)
 
 			summary = f'{nSigs} signature{suf(nSigs)} verified'
 
@@ -81,13 +81,13 @@ class MsgOps:
 
 	class export(sign):
 
-		async def __init__(self, msgfile, addr=None):
+		async def __init__(self, msgfile, *, addr=None):
 
 			from .fileutil import write_data_to_file
 			write_data_to_file(
 				cfg     = cfg,
 				outfile = 'signatures.json',
-				data    = SignedOnlineMsg(cfg, infile=msgfile).get_json_for_export(addr),
+				data    = SignedOnlineMsg(cfg, infile=msgfile).get_json_for_export(addr=addr),
 				desc    = 'signature data')
 
 opts_data = {
@@ -126,16 +126,13 @@ export - dump signed MMGen message file to ‘signatures.json’, including only
 The `create` operation takes one or more ADDRESS_SPEC arguments with the
 following format:
 
-    SEED_ID:ADDR_TYPE:ADDR_IDX_SPEC
+    SEED_ID:ADDRTYPE_CODE:ADDR_IDX_SPEC
 
-where ADDR_TYPE is an address type letter from the list below, and
-ADDR_IDX_SPEC is a comma-separated list of address indexes or hyphen-
-separated address index ranges.
+where ADDRTYPE_CODE is a one-letter address type code from the list below, and
+ADDR_IDX_SPEC is a comma-separated list of address indexes or hyphen-separated
+address index ranges.
 
-
-                                ADDRESS TYPES
-
-  {n_at}
+{n_at}
 
 
                                     NOTES
@@ -210,24 +207,24 @@ if len(cmd_args) < 2:
 	cfg._usage()
 
 op = cmd_args.pop(0)
+arg1 = cmd_args.pop(0)
 
 if cfg.msghash_type and op != 'create':
 	die(1, '--msghash-type option may only be used with the "create" command')
 
 async def main():
-	if op == 'create':
-		if len(cmd_args) < 2:
-			cfg._usage()
-		MsgOps.create(cmd_args[0], ' '.join(cmd_args[1:]))
-	elif op == 'sign':
-		if len(cmd_args) < 1:
-			cfg._usage()
-		await MsgOps.sign(cmd_args[0], cmd_args[1:])
-	elif op in ('verify', 'export'):
-		if len(cmd_args) not in (1, 2):
-			cfg._usage()
-		await getattr(MsgOps, op)(cmd_args[0], cmd_args[1] if len(cmd_args) == 2 else None)
-	else:
-		die(1, f'{op!r}: unrecognized operation')
+	match op:
+		case 'create':
+			if not cmd_args:
+				cfg._usage()
+			MsgOps.create(arg1, ' '.join(cmd_args))
+		case 'sign':
+			await MsgOps.sign(arg1, cmd_args[:])
+		case 'verify' | 'export':
+			if len(cmd_args) not in (0, 1):
+				cfg._usage()
+			await getattr(MsgOps, op)(arg1, addr=cmd_args[0] if cmd_args else None)
+		case _:
+			die(1, f'{op!r}: unrecognized operation')
 
-async_run(main())
+async_run(cfg, main)

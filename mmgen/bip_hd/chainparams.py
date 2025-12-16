@@ -17,28 +17,27 @@ def parse_data():
 		'idx chain name')
 
 	def parse_line(line):
-		l = line.split()
-
-		if l[2] == '-':
-			return _u(
-				idx   = int(l[0]),
-				chain = l[1],
-				name  = ' '.join(l[3:]),
-			)
-		else:
-			return _d(
-				idx      = int(l[0]),
-				chain    = l[1],
-				curve    = defaults.curve if l[2] == 'x' else l[2],
-				network  = 'mainnet' if l[3] == 'm' else 'testnet' if l[3] == 'T' else None,
-				addr_cls = l[4],
-				vb_prv   = defaults.vb_prv if l[5] == 'x' else l[5],
-				vb_pub   = defaults.vb_pub if l[6] == 'x' else l[6],
-				vb_wif   = l[7],
-				vb_addr  = l[8],
-				def_path = defaults.def_path if l[9] == 'x' else l[9],
-				name     = ' '.join(l[10:]),
-			)
+		match line.split():
+			case [idx, chain, col3, *name] if col3 == '-':
+				return _u(
+					idx   = int(idx),
+					chain = chain,
+					name  = ' '.join(name))
+			case [idx, chain, curve, net, acls, vprv, vpub, vwif, vaddr, dpath, *name]:
+				return _d(
+					idx      = int(idx),
+					chain    = chain,
+					curve    = defaults.curve if curve == 'x' else curve,
+					network  = 'mainnet' if net == 'm' else 'testnet' if net == 'T' else None,
+					addr_cls = acls,
+					vb_prv   = defaults.vb_prv if vprv == 'x' else vprv,
+					vb_pub   = defaults.vb_pub if vpub == 'x' else vpub,
+					vb_wif   = vwif,
+					vb_addr  = vaddr,
+					def_path = defaults.def_path if dpath == 'x' else dpath,
+					name     = ' '.join(name))
+			case _:
+				raise ValueError(f'{line!r}: invalid line')
 
 	out = {}
 	for line in _data_in.strip().splitlines():
@@ -48,15 +47,18 @@ def parse_data():
 			key = line[1:-1]
 			continue
 		p = parse_line(line)
-		if key in out:
-			out[key][p[1]] = p
-		elif key == 'defaults':
-			out['defaults'] = p
-			defaults = p
-		else:
-			out[key] = {p[1]: p}
+		match key:
+			case k if k in out:
+				out[key][p[1]] = p
+			case 'defaults':
+				out['defaults'] = p
+				defaults = p
+			case _:
+				out[key] = {p[1]: p}
 
 	return out
+
+# RUNE derivation is SLIP-10, not BIP-44, but we treat them as equivalent
 
 _data_in = """
 
@@ -105,6 +107,7 @@ IDX    CHAIN  CURVE NW ADDR_CLS         VB_PRV   VB_PUB   VB_WIF VB_ADDR  DFL_PA
 784    SUI    edw   m  Sui              x        x        -      -        0'/0'/0' Sui
 818    VET    x     m  Eth              x        x        -      -        x        VeChain Token
 888    NEO    nist  m  Neo              x        x        -      spec     x        NEO
+931    RUNE   x     m  BechP2PKH        x        x        -      h:thor   x        THORChain
 996    OKT    x     m  Okex             x        x        -      -        x        OKChain Token
 1023   ONE    x     m  One              x        x        -      -        x        HARMONY-ONE (Legacy)
 1024   ONT    nist  m  Neo              x        x        -      spec     x        Ontology
@@ -896,7 +899,6 @@ IDX    CHAIN    NAME
 921    AVN    - Avian Network
 925    DIP    - Dipper Network
 928    GHM    - HermitMatrixNetwork
-931    RUNE   - THORChain (RUNE)
 941    ---    - reserved
 945    UNLOCK - Jasiri protocol
 955    LTP    - LifetionCoin

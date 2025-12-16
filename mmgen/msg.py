@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -33,15 +33,19 @@ class MMGenIDRange(HiliteStr, InitErrors, MMGenObject):
 		from .addr import AddrListID
 		from .seed import SeedID
 		try:
-			ss = str(id_str).split(':')
-			assert len(ss) in (2, 3), 'not 2 or 3 colon-separated items'
-			t = proto.addr_type((ss[1], proto.dfl_mmtype)[len(ss)==2])
-			me = str.__new__(cls, '{}:{}:{}'.format(ss[0], t, ss[-1]))
-			me.sid = SeedID(sid=ss[0])
-			me.idxlist = AddrIdxList(ss[-1])
-			me.mmtype = t
-			assert t in proto.mmtypes, f'{t}: invalid address type for {proto.cls_name}'
-			me.al_id = str.__new__(AddrListID, me.sid+':'+me.mmtype) # checks already done
+			match id_str.split(':'):
+				case [sid, t, fmt_str]:
+					assert t in proto.mmtypes, f'{t}: invalid address type for {proto.cls_name}'
+					mmtype = proto.addr_type(t)
+				case [sid, fmt_str]:
+					mmtype = proto.addr_type(proto.dfl_mmtype)
+				case _:
+					raise ValueError('not 2 or 3 colon-separated items')
+			me = str.__new__(cls, f'{sid}:{mmtype}:{fmt_str}')
+			me.sid = SeedID(sid=sid)
+			me.idxlist = AddrIdxList(fmt_str=fmt_str)
+			me.mmtype = mmtype
+			me.al_id = str.__new__(AddrListID, me.sid + ':' + me.mmtype) # checks already done
 			me.proto = proto
 			return me
 		except Exception as e:
@@ -63,7 +67,7 @@ class coin_msg:
 		def chksum(self):
 			return make_chksum_6(
 				json.dumps(
-					{k:self.data[k] for k in self.chksum_keys},
+					{k: self.data[k] for k in self.chksum_keys},
 					sort_keys = True,
 					separators = (',', ':')
 			))
@@ -91,13 +95,11 @@ class coin_msg:
 			coin, network = network_id.split('_')
 			return init_proto(cfg=cfg, coin=coin, network=network)
 
-		def write_to_file(self, outdir=None, ask_overwrite=False):
+		def write_to_file(self, *, outdir=None, ask_overwrite=False):
 			data = {
 				'id': f'{gc.proj_name} {self.desc}',
 				'metadata': self.data,
-				'signatures': self.sigs,
-			}
-
+				'signatures': self.sigs}
 			write_data_to_file(
 				cfg           = self.cfg,
 				outfile       = os.path.join(outdir or '', self.filename),
@@ -118,8 +120,7 @@ class coin_msg:
 				'network': '{}_{}'.format(self.proto.coin.lower(), self.proto.network),
 				'addrlists': [MMGenIDRange(self.proto, i) for i in addrlists.split()],
 				'message': message,
-				'msghash_type': msghash_type,
-			}
+				'msghash_type': msghash_type}
 			self.sigs = {}
 
 	class completed(base):
@@ -146,8 +147,7 @@ class coin_msg:
 				'addr':       'address:',
 				'addr_p2pkh': 'addr_p2pkh:',
 				'pubhash':    'pubkey hash:',
-				'sig':        'signature:',
-			}
+				'sig':        'signature:'}
 
 			def gen_entry(e):
 				for k in labels:
@@ -182,8 +182,7 @@ class coin_msg:
 				'network':      ('Network:',           lambda v: v.replace('_', ' ').upper()),
 				'msghash_type': ('Message Hash Type:', lambda v: v),
 				'addrlists':    ('Address Ranges:',    lambda v: fmt_list(v, fmt='bare')),
-				'failed_sids':  ('Failed Seed IDs:',   lambda v: red(fmt_list(v, fmt='bare'))),
-			}
+				'failed_sids':  ('Failed Seed IDs:',   lambda v: red(fmt_list(v, fmt='bare')))}
 
 			if len(self.msg_cls.msghash_types) == 1:
 				del hdr_data['msghash_type']
@@ -208,7 +207,7 @@ class coin_msg:
 
 	class unsigned(completed):
 
-		async def sign(self, wallet_files, passwd_file=None):
+		async def sign(self, wallet_files, *, passwd_file=None):
 
 			from .addrlist import KeyAddrList
 
@@ -231,10 +230,11 @@ class coin_msg:
 					mmid = f'{al_in.sid}:{al_in.mmtype}:{e.idx}'
 					data = {
 						'addr': e.addr,
-						'sig': sig,
-					}
+						'sig': sig}
+
 					if self.msg_cls.include_pubhash:
-						data.update({'pubhash': self.proto.decode_addr(e.addr_p2pkh or e.addr).bytes.hex()})
+						data.update(
+							{'pubhash': self.proto.decode_addr(e.addr_p2pkh or e.addr).bytes.hex()})
 
 					if e.addr_p2pkh:
 						data.update({'addr_p2pkh': e.addr_p2pkh})
@@ -291,7 +291,7 @@ class coin_msg:
 				req_addr = (
 					CoinAddr(self.proto, addr) if type(self).__name__ == 'exported_sigs' else
 					MMGenID(self.proto, addr))
-				sigs = {k:v for k, v in self.sigs.items() if k == req_addr}
+				sigs = {k: v for k, v in self.sigs.items() if k == req_addr}
 			else:
 				sigs = self.sigs
 
@@ -300,7 +300,7 @@ class coin_msg:
 
 			return sigs
 
-		async def verify(self, addr=None):
+		async def verify(self, *, addr=None):
 
 			sigs = self.get_sigs(addr)
 
@@ -319,21 +319,18 @@ class coin_msg:
 
 			return len(sigs)
 
-		def get_json_for_export(self, addr=None):
+		def get_json_for_export(self, *, addr=None):
 			sigs = list(self.get_sigs(addr).values())
 			pfx = self.msg_cls.sigdata_pfx
 			if pfx:
-				sigs = [{k:pfx+v for k, v in e.items()} for e in sigs]
-			return json.dumps(
-				{
+				sigs = [{k: pfx+v for k, v in e.items()} for e in sigs]
+			return json.dumps({
 					'message': self.data['message'],
 					'msghash_type': self.data['msghash_type'],
 					'network': self.data['network'].upper(),
-					'signatures': sigs,
-				},
+					'signatures': sigs},
 				sort_keys = True,
-				indent = 4
-			)
+				indent = 4)
 
 	class exported_sigs(signed_online):
 
@@ -347,8 +344,8 @@ class coin_msg:
 				)
 
 			pfx = self.msg_cls.sigdata_pfx
-			self.sigs = {sig_data['addr']:sig_data for sig_data in (
-				[{k:v[len(pfx):] for k, v in e.items()} for e in self.data['signatures']]
+			self.sigs = {sig_data['addr']: sig_data for sig_data in (
+				[{k: v[len(pfx):] for k, v in e.items()} for e in self.data['signatures']]
 					if pfx else
 				self.data['signatures']
 			)}

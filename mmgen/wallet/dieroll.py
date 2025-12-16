@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -60,7 +60,7 @@ class wallet(wallet):
 					desc       = 'gathered from your die rolls')
 				self.desc += ' plus user-supplied entropy'
 
-		self.seed = Seed(self.cfg, seed_bytes)
+		self.seed = Seed(self.cfg, seed_bin=seed_bytes)
 
 		self.check_usr_seed_len()
 		return True
@@ -69,7 +69,7 @@ class wallet(wallet):
 
 		if not self.cfg.stdin_tty:
 			from ..ui import get_data_from_user
-			return get_data_from_user(self.cfg, desc)
+			return get_data_from_user(self.cfg, desc=desc)
 
 		bc = baseconv('b6d')
 

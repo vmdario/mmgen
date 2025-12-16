@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,13 +43,16 @@ class SeedSplitSpecifier(HiliteStr, InitErrors, MMGenObject):
 		if isinstance(s, cls):
 			return s
 		try:
-			arr = s.split(':')
-			assert len(arr) in (2, 3), 'cannot be parsed'
-			a, b, c = arr if len(arr) == 3 else ['default'] + arr
 			me = str.__new__(cls, s)
-			me.id = SeedSplitIDString(a)
-			me.idx = SeedShareIdx(b)
-			me.count = SeedShareCount(c)
+			match s.split(':', 2):
+				case [id_str, idx, count]:
+					me.id = SeedSplitIDString(id_str)
+				case [idx, count]:
+					me.id = SeedSplitIDString('default')
+				case _:
+					raise ValueError('seed split specifier cannot be parsed')
+			me.idx = SeedShareIdx(idx)
+			me.count = SeedShareCount(count)
 			assert me.idx <= me.count, 'share index greater than share count'
 			return me
 		except Exception as e:
@@ -68,7 +71,7 @@ class SeedShareList(SubSeedList):
 	count  = ImmutableAttr(SeedShareCount)
 	id_str = ImmutableAttr(SeedSplitIDString)
 
-	def __init__(self, parent_seed, count, id_str=None, master_idx=None, debug_last_share=False):
+	def __init__(self, parent_seed, count, *, id_str=None, master_idx=None, debug_last_share=False):
 		self.member_type = SeedShare
 		self.parent_seed = parent_seed
 		self.id_str = id_str or 'default'
@@ -106,7 +109,8 @@ class SeedShareList(SubSeedList):
 			if last_share_debug(ls) or ls.sid in self.data['long'] or ls.sid == parent_seed.sid:
 				# collision: throw out entire split list and redo with new start nonce
 				if parent_seed.cfg.debug_subseed:
-					self._collision_debug_msg(ls.sid, count, nonce, 'nonce_start', debug_last_share)
+					self._collision_debug_msg(
+						ls.sid, count, nonce, nonce_desc='nonce_start', debug_last_share=debug_last_share)
 			else:
 				self.data['long'][ls.sid] = (count, nonce)
 				break
@@ -118,18 +122,18 @@ class SeedShareList(SubSeedList):
 			B = self.join().data
 			assert A == B, f'Data mismatch!\noriginal seed: {A!r}\nrejoined seed: {B!r}'
 
-	def get_share_by_idx(self, idx, base_seed=False):
-		if idx < 1 or idx > self.count:
-			die('RangeError', f'{idx}: share index out of range')
-		elif idx == self.count:
-			return self.last_share
-		elif self.master_share and idx == 1:
-			return self.master_share if base_seed else self.master_share.derived_seed
-		else:
-			ss_idx = SubSeedIdx(str(idx) + 'L')
-			return self.get_subseed_by_ss_idx(ss_idx)
+	def get_share_by_idx(self, idx, *, base_seed=False):
+		match idx:
+			case self.count:
+				return self.last_share
+			case 1 if self.master_share:
+				return self.master_share if base_seed else self.master_share.derived_seed
+			case x if x >= 1 or x <= self.count:
+				return self.get_subseed_by_ss_idx(SubSeedIdx(str(idx) + 'L'))
+			case x:
+				die('RangeError', f'{x}: share index out of range')
 
-	def get_share_by_seed_id(self, sid, base_seed=False):
+	def get_share_by_seed_id(self, sid, *, base_seed=False):
 		if sid == self.data['long'].key(self.count-1):
 			return self.last_share
 		elif self.master_share and sid == self.data['long'].key(0):
@@ -181,7 +185,7 @@ class SeedShareBase(MMGenObject):
 	def desc(self):
 		return self.get_desc()
 
-	def get_desc(self, ui=False):
+	def get_desc(self, *, ui=False):
 		pl = self.parent_list
 		mss = f', with master share #{pl.master_share.idx}' if pl.master_share else ''
 		if ui:
@@ -197,7 +201,7 @@ class SeedShareBase(MMGenObject):
 class SeedShare(SeedShareBase, SubSeed):
 
 	@staticmethod
-	def make_subseed_bin(parent_list, idx:int, nonce:int, length:str):
+	def make_subseed_bin(parent_list, idx: int, nonce: int, length: str):
 		seed = parent_list.parent_seed
 		assert parent_list.have_short is False
 		assert length == 'long'
@@ -250,12 +254,11 @@ class SeedShareMaster(SeedBase, SeedShareBase):
 		self.parent_list = parent_list
 		self.cfg = parent_list.parent_seed.cfg
 
-		SeedBase.__init__(self, self.cfg, self.make_base_seed_bin())
+		SeedBase.__init__(self, self.cfg, seed_bin=self.make_base_seed_bin())
 
 		self.derived_seed = SeedBase(
 			self.cfg,
-			self.make_derived_seed_bin(parent_list.id_str, parent_list.count)
-		)
+			seed_bin = self.make_derived_seed_bin(parent_list.id_str, parent_list.count))
 
 	@property
 	def fn_stem(self):
@@ -274,7 +277,7 @@ class SeedShareMaster(SeedBase, SeedShareBase):
 		scramble_key = id_str.encode() + b':' + count.to_bytes(2, 'big')
 		return Crypto(self.cfg).scramble_seed(self.data, scramble_key)[:self.byte_len]
 
-	def get_desc(self, ui=False):
+	def get_desc(self, *, ui=False):
 		psid = self.parent_list.parent_seed.sid
 		mss = f'master share #{self.idx} of '
 		return yellow('(' + mss) + psid.hl() + yellow(')') if ui else mss + psid
@@ -291,11 +294,14 @@ class SeedShareMasterJoining(SeedShareMaster):
 		self.cfg = cfg
 		self.id_str = id_str or 'default'
 		self.count = count
-		self.derived_seed = SeedBase(cfg, self.make_derived_seed_bin(self.id_str, self.count))
+		self.derived_seed = SeedBase(
+			cfg,
+			seed_bin = self.make_derived_seed_bin(self.id_str, self.count))
 
 def join_shares(
 		cfg,
 		seed_list,
+		*,
 		master_idx = None,
 		id_str     = None):
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -51,14 +51,14 @@ class TwAddressesPrune(TwAddresses):
 					pruned.append(n)
 					if d.amt:
 						rmsg(f'Warning: pruned address {d.twmmid.addr} has a balance!')
-					elif self.warn_used and d.recvd:
+					elif self.warn_used and d.is_used:
 						ymsg(f'Warning: pruned address {d.twmmid.addr} is used!')
 				else:
 					yield d
 
 		pruned = []
 		self.reverse = False
-		self.do_sort('twmmid')
+		self.sort_data('twmmid')
 		self.data = list(gen())
 
 		return pruned
@@ -86,22 +86,18 @@ class TwAddressesPrune(TwAddresses):
 
 			from collections import namedtuple
 			md = namedtuple('mdata', ['wmsg', 'prompt'])
-
 			m = {
 				'amt': md(
 					red('Address #{a} ({b}) has a balance of {c}!'.format(
 						a = addrnum,
 						b = e.twmmid.addr,
-						c = e.amt.hl2(color=False, unit=True))),
-					'[p]rune anyway, [P]rune all with balance, [s]kip, [S]kip all with balance: ',
-				),
+						c = e.amt.hl3(color=False, unit=True))),
+					'[p]rune anyway, [P]rune all with balance, [s]kip, [S]kip all with balance: '),
 				'used': md(
 					yellow('Address #{a} ({b}) is used!'.format(
 						a = addrnum,
 						b = e.twmmid.addr)),
-					'[p]rune anyway, [P]rune all used, [s]kip, [S]kip all used: ',
-				),
-			}
+					'[p]rune anyway, [P]rune all used, [s]kip, [S]kip all used: ')}
 
 			from ..term import get_char
 			valid_res = 'pPsS'
@@ -133,11 +129,11 @@ class TwAddressesPrune(TwAddresses):
 					if auto[desc]: # we’ve switched to auto mode, so go back and fix up all previous entries
 						for idx in addrnums[:n]:
 							e = parent.disp_data[idx-1]
-							if skip_all_used and e.recvd:
+							if skip_all_used and e.is_used:
 								e.tag = False
 							elif desc == 'amt' and e.amt:
 								e.tag = prune
-							elif desc == 'used' and (e.recvd and not e.amt):
+							elif desc == 'used' and (e.is_used and not e.amt):
 								e.tag = prune
 					# skipping all used addrs implies skipping all addrs with balances
 					if skip_all_used:
@@ -154,7 +150,7 @@ class TwAddressesPrune(TwAddresses):
 				e = parent.disp_data[addrnum-1]
 				if e.amt and not dfl['amt']:
 					e.tag = do_entry('amt', n, addrnum, e)
-				elif parent.warn_used and (e.recvd and not e.amt) and not dfl['used']:
+				elif parent.warn_used and (e.is_used and not e.amt) and not dfl['used']:
 					e.tag = do_entry('used', n, addrnum, e)
 				else:
 					e.tag = True

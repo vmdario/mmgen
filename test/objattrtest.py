@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -55,7 +55,7 @@ cfg = Config(opts_data=opts_data)
 from test.include.common import set_globals
 set_globals(cfg)
 
-from test.objattrtest_d.oat_common import sample_objs
+from test.objattrtest_d.common import sample_objs
 
 pd = namedtuple('attr_bits', ['read_ok', 'delete_ok', 'reassign_ok', 'typeconv', 'set_none_ok'])
 perm_bits = ('read_ok', 'delete_ok', 'reassign_ok')
@@ -90,19 +90,20 @@ def test_attr_perm(obj, attrname, perm_name, perm_value, dobj, attrval_type):
 	pstem = pname.rstrip('e')
 
 	try:
-		if perm_name == 'read_ok': # non-existent perm
-			getattr(obj, attrname)
-		elif perm_name == 'reassign_ok':
-			try:
-				so = sample_objs[attrval_type.__name__]
-			except Exception as e:
-				raise SampleObjError(f'unable to find sample object of type {attrval_type.__name__!r}') from e
-			# ListItemAttr allows setting an attribute if its value is None
-			if type(dobj) is ListItemAttr and getattr(obj, attrname) is None:
+		match perm_name:
+			case 'read_ok': # non-existent perm
+				getattr(obj, attrname)
+			case 'reassign_ok':
+				try:
+					so = sample_objs[attrval_type.__name__]
+				except Exception as e:
+					raise SampleObjError(f'unable to find sample object of type {attrval_type.__name__!r}') from e
+				# ListItemAttr allows setting an attribute if its value is None
+				if type(dobj) is ListItemAttr and getattr(obj, attrname) is None:
+					setattr(obj, attrname, so)
 				setattr(obj, attrname, so)
-			setattr(obj, attrname, so)
-		elif perm_name == 'delete_ok':
-			delattr(obj, attrname)
+			case 'delete_ok':
+				delattr(obj, attrname)
 	except SampleObjError as e:
 		die(4, f'Test script error ({e})')
 	except Exception as e:
@@ -164,7 +165,7 @@ def test_object(mod, test_data, objname):
 
 def do_loop():
 	import importlib
-	modname = f'test.objattrtest_d.oat_{proto.coin.lower()}_{proto.network}'
+	modname = f'test.objattrtest_d.{proto.coin.lower()}_{proto.network}'
 	mod = importlib.import_module(modname)
 	test_data = getattr(mod, 'tests')
 	gmsg(f'Running immutable attribute tests for {proto.coin} {proto.network}')

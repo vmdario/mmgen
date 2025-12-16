@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -68,9 +68,9 @@ class Sha2:
 		# First wordBits bits of the fractional parts of the cube roots of the first nRounds primes
 		cls.K = tuple(getFractionalBits(cbrt(n)) for n in primes)
 
-	def __init__(self, message, preprocess=True):
+	def __init__(self, message, *, preprocess=True):
 		'Use preprocess=False for Sha256Compress'
-		assert isinstance(message, (bytes, bytearray, list)), 'message must be of type bytes, bytearray or list'
+		assert isinstance(message, bytes | bytearray | list), 'message must be of type bytes, bytearray or list'
 		if not self.K:
 			type(self).initConstants()
 		self.H = list(self.H_init)

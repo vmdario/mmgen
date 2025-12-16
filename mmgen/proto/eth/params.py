@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -21,12 +21,13 @@ class mainnet(CoinProtocol.DummyWIF, CoinProtocol.Secp256k1):
 	network_names = _nw('mainnet', 'testnet', 'devnet')
 	addr_len      = 20
 	mmtypes       = ('E',)
+	preferred_mmtypes  = ('E',)
 	dfl_mmtype    = 'E'
 	mod_clsname   = 'Ethereum'
 	pubkey_type   = 'std' # required by DummyWIF
 
 	coin_amt      = 'ETHAmt'
-	max_tx_fee    = '0.005'
+	max_tx_fee    = 0.005
 	chain_names   = ['ethereum', 'foundation']
 	sign_mode     = 'standalone'
 	caps          = ('token',)
@@ -35,9 +36,12 @@ class mainnet(CoinProtocol.DummyWIF, CoinProtocol.Secp256k1):
 	base_proto_coin = 'ETH'
 	base_coin     = 'ETH'
 	avg_bdi       = 15
-	ignore_daemon_version = False
 	decimal_prec  = 36
+	address_reuse_ok = True
+	is_vm = True
+	is_evm = True
 
+	# https://www.chainid.dev
 	chain_ids = {
 		1:    'ethereum',         # ethereum mainnet
 		2:    'morden',           # morden testnet (deprecated)
@@ -50,7 +54,17 @@ class mainnet(CoinProtocol.DummyWIF, CoinProtocol.Secp256k1):
 		17:   'developmentchain', # parity dev chain
 		1337: 'developmentchain', # geth dev chain
 		711:  'ethereum',         # geth mainnet (empty chain)
-	}
+		17000: 'holesky'}         # proof-of-stake testnet
+
+	coin_cfg_opts = (
+		'daemon_id',
+		'ignore_daemon_version',
+		'rpc_host',
+		'rpc_port',
+		'max_tx_fee')
+
+	proto_cfg_opts = (
+		'chain_names')
 
 	@property
 	def dcoin(self):

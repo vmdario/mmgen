@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -71,7 +71,7 @@ class SubSeed(SeedBase):
 			seed_bin=self.make_subseed_bin(parent_list, idx, nonce, length))
 
 	@staticmethod
-	def make_subseed_bin(parent_list, idx:int, nonce:int, length:str):
+	def make_subseed_bin(parent_list, idx: int, nonce: int, length: str):
 		seed = parent_list.parent_seed
 		short = {'short': True, 'long': False}[length]
 		# field maximums: idx: 4294967295 (1000000), nonce: 65535 (1000), short: 255 (1)
@@ -86,7 +86,7 @@ class SubSeedList(MMGenObject):
 	debug_last_share_sid_len = 3
 	dfl_len = 100
 
-	def __init__(self, parent_seed, length=None):
+	def __init__(self, parent_seed, *, length=None):
 		self.member_type = SubSeed
 		self.parent_seed = parent_seed
 		self.data = {'long': IndexedDict(), 'short': IndexedDict()}
@@ -95,7 +95,7 @@ class SubSeedList(MMGenObject):
 	def __len__(self):
 		return len(self.data['long'])
 
-	def get_subseed_by_ss_idx(self, ss_idx_in, print_msg=False):
+	def get_subseed_by_ss_idx(self, ss_idx_in, *, print_msg=False):
 		ss_idx = SubSeedIdx(ss_idx_in)
 		if print_msg:
 			msg_r('{} {} of {}...'.format(
@@ -122,7 +122,7 @@ class SubSeedList(MMGenObject):
 		assert seed.sid == sid, f'{seed.sid} != {sid}: Seed ID mismatch!'
 		return seed
 
-	def get_subseed_by_seed_id(self, sid, last_idx=None, print_msg=False):
+	def get_subseed_by_seed_id(self, sid, *, last_idx=None, print_msg=False):
 
 		def get_existing_subseed_by_seed_id(sid):
 			for k in ('long', 'short') if self.have_short else ('long',):
@@ -157,7 +157,7 @@ class SubSeedList(MMGenObject):
 			do_msg(subseed)
 			return subseed
 
-	def _collision_debug_msg(self, sid, idx, nonce, nonce_desc='nonce', debug_last_share=False):
+	def _collision_debug_msg(self, sid, idx, nonce, *, nonce_desc='nonce', debug_last_share=False):
 		slen = 'short' if sid in self.data['short'] else 'long'
 		m1 = f'add_subseed(idx={idx},{slen}):'
 		if sid == self.parent_seed.sid:
@@ -172,7 +172,7 @@ class SubSeedList(MMGenObject):
 			m2 = f'collision with ID {sid} (idx={colliding_idx},{slen}),'
 		msg(f'{m1:30} {m2:46} incrementing {nonce_desc} to {nonce+1}')
 
-	def _generate(self, last_idx=None, last_sid=None):
+	def _generate(self, last_idx=None, *, last_sid=None):
 
 		if last_idx is None:
 			last_idx = self.len

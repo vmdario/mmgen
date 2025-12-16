@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,8 +27,8 @@ def check_data(orig_func):
 	def f(self, data):
 		assert data.pubkey_type == self.pubkey_type, 'addrgen.py:check_data() pubkey_type mismatch'
 		assert data.compressed == self.compressed, (
-	f'addrgen.py:check_data() expected compressed={self.compressed} but got compressed={data.compressed}'
-		)
+			f'addrgen.py:check_data() expected compressed={self.compressed} '
+			f'but got compressed={data.compressed}')
 		return orig_func(self, data)
 	return f
 
@@ -59,19 +59,20 @@ def AddrGenerator(cfg, proto, addr_type):
 		'compressed': 'btc',
 		'segwit':     'btc',
 		'bech32':     'btc',
+		'bech32x':    'xchain',
 		'monero':     'xmr',
 		'ethereum':   'eth',
-		'zcash_z':    'zec',
-	}
+		'zcash_z':    'zec'}
 
 	from .addr import MMGenAddrType
 
-	if type(addr_type) is str:
-		addr_type = MMGenAddrType(proto=proto, id_str=addr_type)
-	elif type(addr_type) is MMGenAddrType:
-		assert addr_type in proto.mmtypes, f'{addr_type}: invalid address type for coin {proto.coin}'
-	else:
-		raise TypeError(f"{type(addr_type)}: incorrect argument type for 'addr_type' arg")
+	match addr_type:
+		case MMGenAddrType(x):
+			assert x in proto.mmtypes, f'{x}: invalid address type for coin {proto.coin}'
+		case str(x):
+			addr_type = MMGenAddrType(proto=proto, id_str=x)
+		case _:
+			raise TypeError(f"{type(addr_type)}: incorrect argument type for 'addr_type' arg")
 
 	import importlib
 	return getattr(

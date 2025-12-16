@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -9,7 +9,7 @@
 #   https://gitlab.com/mmgen/mmgen-wallet
 
 """
-help.xmrwallet: xmrwallet help notes for MMGen suite
+help.xmrwallet: xmrwallet help notes for the MMGen Wallet suite
 """
 
 def help(proto, cfg):
@@ -49,7 +49,7 @@ transfer  - transfer specified XMR amount from specified wallet:account to
             specified address
 sweep     - sweep funds in specified wallet:account to new address in same
             account, or new or specified account in another wallet
-sweep_all - same as above, but sweep balances of all addresses in the account
+sweep-all - same as above, but sweep balances of all addresses in the account
 relay     - relay a transaction from a transaction file created using ‘sweep’
             or ‘transfer’ with the --no-relay option
 submit    - submit an autosigned transaction to a wallet and the network
@@ -59,8 +59,11 @@ abort     - abort the current transaction created with --autosign.  The
             transaction may be signed or unsigned
 txview    - display detailed information about a transaction file or files
 txlist    - same as above, but display terse information in tabular format
-dump      - produce JSON dumps of wallet metadata (accounts, addresses and
-            labels) for a list or range of wallets
+dump-json - dump wallet metadata (accounts, addresses, labels), plus address
+            balances, for a list or range of wallets, to standard output in
+            JSON format
+dump      - same as above, but dump metadata only and save the dumps to
+            separate files for each wallet
 restore   - same as ‘create’, but additionally restore wallet metadata from
             the corresponding JSON dump files created with ‘dump’
 export-outputs      - export outputs of watch-only wallets for import into

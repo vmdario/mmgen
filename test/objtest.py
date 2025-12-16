@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -65,38 +65,39 @@ from test.include.common import set_globals
 set_globals(cfg)
 
 def run_test(mod, test, arg, input_data, arg1, exc_name):
-	arg_copy = arg
-	kwargs = {}
-	ret_chk = arg
-	ret_idx = None
+
+	arg_copy, ret_chk, ret_idx, kwargs = (arg, arg, None, {})
+
 	if input_data == 'good' and isinstance(arg, tuple):
 		arg, ret_chk = arg
-	if isinstance(arg, dict): # pass one arg + kwargs to constructor
-		arg_copy = arg.copy()
-		if 'arg' in arg:
-			args = [arg['arg']]
-			ret_chk = args[0]
-			del arg['arg']
-		else:
-			args = []
-			ret_chk = list(arg.values())[0] # assume only one key present
-		if 'ret' in arg:
-			ret_chk = arg['ret']
-			del arg['ret']
-			del arg_copy['ret']
-		if 'exc_name' in arg:
-			exc_name = arg['exc_name']
-			del arg['exc_name']
-			del arg_copy['exc_name']
-		if 'ret_idx' in arg:
-			ret_idx = arg['ret_idx']
-			del arg['ret_idx']
-			del arg_copy['ret_idx']
-		kwargs.update(arg)
-	elif isinstance(arg, tuple):
-		args = arg
-	else:
-		args = [arg]
+
+	match arg:
+		case dict(): # pass one arg + kwargs to constructor
+			arg_copy = arg.copy()
+			if 'arg' in arg:
+				args = [arg['arg']]
+				ret_chk = args[0]
+				del arg['arg']
+			else:
+				args = []
+				ret_chk = list(arg.values())[0] # assume only one key present
+			if 'ret' in arg:
+				ret_chk = arg['ret']
+				del arg['ret']
+				del arg_copy['ret']
+			if 'exc_name' in arg:
+				exc_name = arg['exc_name']
+				del arg['exc_name']
+				del arg_copy['exc_name']
+			if 'ret_idx' in arg:
+				ret_idx = arg['ret_idx']
+				del arg['ret_idx']
+				del arg_copy['ret_idx']
+			kwargs.update(arg)
+		case tuple():
+			args = arg
+		case _:
+			args = [arg]
 
 	if cfg.getobj:
 		if args:
@@ -180,7 +181,7 @@ def run_test(mod, test, arg, input_data, arg1, exc_name):
 
 def do_loop():
 	import importlib
-	modname = f'test.objtest_d.ot_{proto.coin.lower()}_{proto.network}'
+	modname = f'test.objtest_d.{proto.coin.lower()}_{proto.network}'
 	mod = importlib.import_module(modname)
 	test_data = getattr(mod, 'tests')
 	gmsg(f'Running data object tests for {proto.coin} {proto.network}')

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -64,26 +64,23 @@ class cfg_file:
 				die(2, f'ERROR: unable to write to {fn!r}')
 
 	def parse_value(self, value, refval):
-		if isinstance(refval, dict):
-			m = re.fullmatch(r'((\s+\w+:\S+)+)', ' '+value) # expect one or more colon-separated values
-			if m:
-				return dict([i.split(':') for i in m[1].split()])
-		elif isinstance(refval, (list, tuple)):
-			m = re.fullmatch(r'((\s+\S+)+)', ' '+value)     # expect single value or list
-			if m:
-				ret = m[1].split()
-				return ret if isinstance(refval, list) else tuple(ret)
-		else:
-			return value
+		match refval:
+			case dict():            # expect one or more colon-separated values:
+				if m := re.fullmatch(r'((\s+\w+:\S+)+)', ' ' + value):
+					return dict([i.split(':') for i in m[1].split()])
+			case list() | tuple():  # expect single value or list:
+				if m := re.fullmatch(r'((\s+\S+)+)', ' ' + value):
+					ret = m[1].split()
+					return ret if isinstance(refval, list) else tuple(ret)
+			case _:
+				return value
 
 	def get_lines(self):
 		def gen_lines():
 			for lineno, line in enumerate(self.data, 1):
-				line = strip_comment(line)
-				if line == '':
+				if (line := strip_comment(line)) == '':
 					continue
-				m = re.fullmatch(r'(\w+)(\s+)(.*)', line)
-				if m:
+				if m := re.fullmatch(r'(\w+)(\s+)(.*)', line):
 					yield self.line_data(m[1], m[3], lineno, None)
 				else:
 					die('CfgFileParseError', f'Parse error in file {self.fn!r}, line {lineno}')
@@ -94,8 +91,7 @@ class cfg_file:
 		d = {
 			'usr':    CfgFileUsr,
 			'sys':    CfgFileSampleSys,
-			'sample': CfgFileSampleUsr,
-		}
+			'sample': CfgFileSampleUsr}
 		return d[id_str]
 
 class cfg_file_sample(cfg_file):
@@ -135,6 +131,7 @@ class cfg_file_sample(cfg_file):
 			hdr = True
 			chunk = []
 			in_chunk = False
+			last_nonblank = 0
 
 			for lineno, line in enumerate(lines, 1):
 
@@ -189,7 +186,7 @@ class CfgFileSampleSys(cfg_file_sample):
 		else:
 			# self.fn is used for error msgs only, so file need not exist on filesystem
 			self.fn = os.path.join(os.path.dirname(__file__), 'data', self.fn_base)
-			self.data = gc.get_mmgen_data_file(self.fn_base).splitlines()
+			self.data = gc.read_mmgen_data_file(filename=self.fn_base).splitlines()
 
 	def make_metadata(self):
 		return [f'# Version {self.cur_ver} {self.computed_chksum}']
@@ -230,8 +227,7 @@ class CfgFileSampleUsr(cfg_file_sample):
 
 	def parse_metadata(self):
 		if self.data:
-			m = re.match(r'# Version (\d+) ([a-f0-9]{40})$', self.data[-1])
-			if m:
+			if m := re.match(r'# Version (\d+) ([a-f0-9]{40})$', self.data[-1]):
 				self.ver = m[1]
 				self.chksum = m[2]
 				self.data = self.data[:-1] # remove metadata line
@@ -245,23 +241,24 @@ class CfgFileSampleUsr(cfg_file_sample):
 		if removed or added:
 			return {
 				'removed': [i for i in a_tup if i.name in removed],
-				'added':   [i for i in b_tup if i.name in added],
-			}
+				'added':   [i for i in b_tup if i.name in added]}
 		else:
 			return None
 
 	def show_changes(self, diff):
 		ymsg('Warning: configuration file options have changed!\n')
 		for desc in ('added', 'removed'):
-			data = diff[desc]
-			if data:
-				opts = fmt_list([i.name for i in data], fmt='bare')
-				msg(f'  The following option{suf(data, verb="has")} been {desc}:\n    {opts}\n')
-				if desc == 'removed' and data:
+			changed_opts = [i.name for i in diff[desc]
+				# workaround for coin-specific opts previously listed in sample file:
+				if not (i.name.endswith('_ignore_daemon_version') and desc == 'removed')
+			]
+			if changed_opts:
+				msg(f'  The following option{suf(changed_opts, verb="has")} been {desc}:')
+				msg(f'    {fmt_list(changed_opts, fmt="bare")}\n')
+				if desc == 'removed':
 					uc = mmgen_cfg_file(self.cfg, 'usr')
 					usr_names = [i.name for i in uc.get_lines()]
-					rm_names = [i.name for i in data]
-					bad = sorted(set(usr_names).intersection(rm_names))
+					bad = sorted(set(usr_names).intersection(changed_opts))
 					if bad:
 						m = f"""
 							The following removed option{suf(bad, verb='is')} set in {uc.fn!r}

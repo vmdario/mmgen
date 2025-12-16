@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -23,9 +23,9 @@ from mmgen.bip39 import is_bip39_mnemonic
 from mmgen.baseconv import is_mmgen_mnemonic, is_b58_str
 from mmgen.xmrseed import is_xmrseed
 
-from ..modtest_d.ut_baseconv import unit_test as ut_baseconv
-from ..modtest_d.ut_bip39 import unit_tests as ut_bip39
-from ..modtest_d.ut_xmrseed import unit_tests as ut_xmrseed
+from ..modtest_d.baseconv import unit_test as baseconv
+from ..modtest_d.bip39 import unit_tests as bip39
+from ..modtest_d.xmrseed import unit_tests as xmrseed
 
 from ..include.common import cfg, sample_text
 proto = cfg._proto
@@ -69,6 +69,9 @@ privhex5 = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0f'
 privhex6 = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 privhex7 = '118089d66b4a5853765e94923abdd5de4616c6e5118089d66b4a5853765e9492'
 
+pubhash1 = '118089d66b4a5853765e94923abdd5de4616c6e5'
+pubhash2 = '3057f66ddd26fa6ef826b0d5ca067ec3e8f3c178'
+
 btc_addr1 = '1C5VPtgq9xQ6AcTgMAR3J6GDrs72HC4pS1'
 btc_addr2 = '1Kz9fVSUMshzPejpzW9D95kScgA3rY6QxF'
 btc_addr3 = '3AhjTiWHhVJAi1s5CfKMcLzYps12x3gZhg'
@@ -107,17 +110,19 @@ eth_pubhex2 = '9166c289b9f905e55f9e3df9f69d7f356b4a22095f894f4715714aa4b56606aff
 xmr_pubhex1 = '1ed49357e217e79dab3c5503822f2bdb561e302e24476ee6ff33242c7551d4e78944790c0cfa9998c2f196061be89b2b8387f9d397db20ea8e049899cdc947d1'
 zec_pubhex1 = 'e6a4edbff547f21bcc2a825b6cf70f06e266a452d2da9d6dc5c1da3d99d7e996f488704dcdfe8d92cafe47772b3f692a98d59de1e99e00ff815f64ae59910f0c'
 
+rune_addr1 = 'thor1xptlvmwaymaxa7pxkr2u5pn7c0508stcr9tw2z'
+
 tests = {
 	'Mnemonic': {
 		'hex2mn': (
-			[([a[0]], b) for a, b in ut_baseconv.vectors['mmgen']] +
-			[([a, 'fmt=bip39'], b) for a, b in ut_bip39.vectors] +
-			[([a, 'fmt=xmrseed'], b) for a, b in ut_xmrseed.vectors]
+			[([a[0]], b) for a, b in baseconv.vectors['mmgen']] +
+			[([a, 'fmt=bip39'], b) for a, b in bip39.vectors] +
+			[([a, 'fmt=xmrseed'], b) for a, b in xmrseed.vectors]
 		),
 		'mn2hex': (
-			[([b, 'fmt=mmgen'], a[0]) for a, b in ut_baseconv.vectors['mmgen']] +
-			[([b, 'fmt=bip39'], a) for a, b in ut_bip39.vectors] +
-			[([b, 'fmt=xmrseed'], a) for a, b in ut_xmrseed.vectors]
+			[([b, 'fmt=mmgen'], a[0]) for a, b in baseconv.vectors['mmgen']] +
+			[([b, 'fmt=bip39'], a) for a, b in bip39.vectors] +
+			[([b, 'fmt=xmrseed'], a) for a, b in xmrseed.vectors]
 		),
 		'mn_rand128': [
 			([], is_mmgen_mnemonic, ['-r0']),
@@ -401,8 +406,11 @@ tests = {
 	'Coin': {
 		'addr2pubhash': {
 			'btc_mainnet': [
-				([ btc_addr5], '118089d66b4a5853765e94923abdd5de4616c6e5'),
-				([ btc_addr6], '3057f66ddd26fa6ef826b0d5ca067ec3e8f3c178'),
+				([btc_addr5], pubhash1),
+				([btc_addr6], pubhash2),
+			],
+			'rune_mainnet': [
+				([rune_addr1], pubhash2),
 			],
 		},
 		'eth_checksummed_addr': {
@@ -415,17 +423,20 @@ tests = {
 		},
 		'pubhash2addr': {
 			'btc_mainnet': [
-				(['118089d66b4a5853765e94923abdd5de4616c6e5'], btc_addr5, None, 'legacy'),
+				([pubhash1], btc_addr5, None, 'legacy'),
 				(['8e34586186551f6320fa3eb2d238a9c61ab8264b'], '37ZBgCBjjz9WSEzp1Zjv8sqdgmNie3Kd5s',
 					['--type=segwit'], 'segwit'),
-				(['3057f66ddd26fa6ef826b0d5ca067ec3e8f3c178'], btc_addr6, ['--type=bech32'], 'bech32'),
+				([pubhash2], btc_addr6, ['--type=bech32'], 'bech32'),
+			],
+			'rune_mainnet': [
+				([pubhash2], rune_addr1, ['--type=X'], 'bech32x'),
 			],
 		},
 		'addr2scriptpubkey': {
 			'btc_mainnet': [
-				([ btc_addr5], '76a914118089d66b4a5853765e94923abdd5de4616c6e588ac'),
-				([ btc_addr7], 'a9148e34586186551f6320fa3eb2d238a9c61ab8264b87'),
-				([ btc_addr6], '00143057f66ddd26fa6ef826b0d5ca067ec3e8f3c178'),
+				([btc_addr5], '76a914118089d66b4a5853765e94923abdd5de4616c6e588ac'),
+				([btc_addr7], 'a9148e34586186551f6320fa3eb2d238a9c61ab8264b87'),
+				([btc_addr6], '00143057f66ddd26fa6ef826b0d5ca067ec3e8f3c178'),
 			],
 		},
 		'scriptpubkey2addr': {
@@ -441,6 +452,14 @@ tests = {
 				([privhex7], btc_wif2, ['--type=compressed'], 'compressed'),
 				([privhex7], btc_wif2, ['--type=segwit'], 'segwit'),
 				([privhex7], btc_wif2, ['--type=bech32'], 'bech32'),
+			],
+		},
+		'privhex2pair': {
+			'btc_mainnet': [
+				([privhex7], [btc_wif1, btc_addr1], None, 'legacy'),
+				([privhex7], [btc_wif2, btc_addr2], ['--type=compressed'], 'compressed'),
+				([privhex7], [btc_wif2, btc_addr3], ['--type=segwit'], 'segwit'),
+				([privhex7], [btc_wif2, btc_addr4], ['--type=bech32'], 'bech32'),
 			],
 		},
 		'privhex2addr': {
@@ -662,6 +681,12 @@ tests = {
 					'E97A D796 B495 E8BC'
 				),
 			],
+			'rune_mainnet': [
+				(
+					['test/ref/thorchain/98831F3A-RUNE-X[1,31-33,500-501,1010-1011].addrs'],
+					'00C6 1930 557F 5E99'
+				),
+			],
 		},
 		'viewkeyaddrfile_chksum': {
 			'xmr_mainnet': [
@@ -745,8 +770,8 @@ tests = {
 									None),],
 			'eth_mainnet': [(['test/ref/ethereum/88FEFD-ETH[23.45495,40000].rawtx'], None),],
 			'eth_testnet': [([
-				'test/ref/ethereum/B472BD-ETH[23.45495,40000].testnet.rawtx',
-				'test/ref/ethereum/B472BD-ETH[23.45495,40000].testnet.sigtx'
+				'test/ref/ethereum/76CF8C-ETH[99.99895,50000].regtest.rawtx',
+				'test/ref/ethereum/76CF8C-ETH[99.99895,50000].regtest.sigtx'
 				], None),],
 			'mm1_mainnet': [(['test/ref/ethereum/5881D2-MM1[1.23456,50000].rawtx'], None),],
 			'mm1_testnet': [(['test/ref/ethereum/6BDB25-MM1[1.23456,50000].testnet.rawtx'], None),],

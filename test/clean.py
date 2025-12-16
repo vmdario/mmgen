@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -31,7 +31,10 @@ opts_data = {
 	},
 }
 
-cfg = Config(opts_data=opts_data)
+cfg = Config(
+	opts_data = opts_data,
+	need_proto = False,
+	init_opts = {'skip_cfg_file': True})
 
 from test.overlay import get_overlay_tree_dir
 overlay_tree_dir = get_overlay_tree_dir(repo_root)
@@ -44,12 +47,11 @@ from test.include.common import clean, set_globals
 
 set_globals(cfg)
 
-from test.include.cfg import clean_cfgs
-
 extra_dirs = [
 	Config.test_datadir,
 	os.path.join('test', 'trash'),
 	os.path.join('test', 'trash2')
 ]
 
-clean(clean_cfgs, extra_dirs=extra_dirs)
+from test.cmdtest_d.include.cfg import cfgs
+clean(cfgs, extra_dirs=extra_dirs)

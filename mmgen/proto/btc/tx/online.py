@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -19,7 +19,7 @@ from .signed import Signed
 
 class OnlineSigned(Signed, TxBase.OnlineSigned):
 
-	async def send(self, prompt_user=True):
+	async def send_checks(self):
 
 		self.check_correct_chain()
 
@@ -37,43 +37,45 @@ class OnlineSigned(Signed, TxBase.OnlineSigned):
 
 		await self.status.display()
 
-		if prompt_user:
-			self.confirm_send()
+	async def test_sendable(self, txhex):
 
-		if self.cfg.bogus_send:
-			m = 'BOGUS transaction NOT sent: {}'
+		await self.send_checks()
+
+		res = await self.rpc.call('testmempoolaccept', (txhex,))
+		ret = res[0]
+
+		if ret['allowed']:
+			from ....obj import CoinTxID
+			msg('TxID: {}'.format(CoinTxID(ret['txid']).hl()))
+			return True
 		else:
-			m = 'Transaction sent: {}'
-			try:
-				ret = await self.rpc.call('sendrawtransaction', self.serialized)
-			except Exception as e:
-				errmsg = str(e)
-				nl = '\n'
-				if errmsg.count('Signature must use SIGHASH_FORKID'):
-					m = (
-						'The Aug. 1 2017 UAHF has activated on this chain.\n'
-						'Re-run the script with the --coin=bch option.')
-				elif errmsg.count('Illegal use of SIGHASH_FORKID'):
-					m  = (
-						'The Aug. 1 2017 UAHF is not yet active on this chain.\n'
-						'Re-run the script without the --coin=bch option.')
-				elif errmsg.count('non-final'):
-					m = "Transaction with nLockTime {!r} can’t be included in this block!".format(
-						self.info.strfmt_locktime(self.get_serialized_locktime()))
-				else:
-					m, nl = ('', '')
-				msg(orange('\n'+errmsg))
-				die(2, f'{m}{nl}Send of MMGen transaction {self.txid} failed')
+			msg(ret['reject-reason'])
+			return False
+
+	async def send_with_node(self, txhex):
+		try:
+			return await self.rpc.call('sendrawtransaction', txhex)
+		except Exception as e:
+			errmsg = str(e)
+			nl = '\n'
+			if errmsg.count('Signature must use SIGHASH_FORKID'):
+				m = (
+					'The Aug. 1 2017 UAHF has activated on this chain.\n'
+					'Re-run the script with the --coin=bch option.')
+			elif errmsg.count('Illegal use of SIGHASH_FORKID'):
+				m  = (
+					'The Aug. 1 2017 UAHF is not yet active on this chain.\n'
+					'Re-run the script without the --coin=bch option.')
+			elif errmsg.count('non-final'):
+				m = "Transaction with nLockTime {!r} can’t be included in this block!".format(
+					self.info.strfmt_locktime(self.get_serialized_locktime()))
 			else:
-				assert ret == self.coin_txid, 'txid mismatch (after sending)'
+				m, nl = ('', '')
+			msg(orange('\n'+errmsg))
+			die(2, f'{m}{nl}Send of MMGen transaction {self.txid} failed')
 
-		msg(m.format(self.coin_txid.hl()))
-		self.add_sent_timestamp()
-		self.add_blockcount()
+	async def post_network_send(self, coin_txid):
 		return True
-
-	def print_contract_addr(self):
-		pass
 
 class Sent(TxBase.Sent, OnlineSigned):
 	pass

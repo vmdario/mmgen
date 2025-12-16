@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -41,63 +41,47 @@ class TwTxHistory(TwView):
 	filters = ('show_unconfirmed',)
 	mod_subpath = 'tw.txhistory'
 
-	async def __init__(self, cfg, proto, sinceblock=0):
+	async def __init__(self, cfg, proto, *, sinceblock=0):
 		await super().__init__(cfg, proto)
-		self.sinceblock = NonNegativeInt(sinceblock if sinceblock >= 0 else self.rpc.blockcount + sinceblock)
+		self.sinceblock = NonNegativeInt(
+			sinceblock if sinceblock >= 0 else self.rpc.blockcount + sinceblock)
 
 	@property
 	def no_rpcdata_errmsg(self):
 		return 'No transaction history {}found!'.format(
 			f'from block {self.sinceblock} ' if self.sinceblock else '')
 
-	def filter_data(self):
+	def get_disp_data(self):
 		return (d for d in self.data if d.confirmations > 0 or self.show_unconfirmed)
 
 	def set_amt_widths(self, data):
 		amts_tuple = namedtuple('amts_data', ['amt'])
 		return super().set_amt_widths([amts_tuple(d.amt_disp(self.show_total_amt)) for d in data])
 
-	def get_column_widths(self, data, wide, interactive):
-
+	def get_column_widths(self, data, *, wide):
 		# var cols: inputs outputs comment [txid]
 		if not hasattr(self, 'varcol_maxwidths'):
 			self.varcol_maxwidths = {
 				'inputs': max(len(d.vouts_disp(
-					'inputs', width=None, color=False, addr_view_pref=self.addr_view_pref)) for d in data),
+					'inputs', width=None, color=False, addr_view_pref=self.addr_view_pref))
+						for d in data),
 				'outputs': max(len(d.vouts_disp(
-					'outputs', width=None, color=False, addr_view_pref=self.addr_view_pref)) for d in data),
-				'comment': max(len(d.comment) for d in data),
-			}
-
-		maxws = self.varcol_maxwidths.copy()
-		minws = {
-			'inputs': 15,
-			'outputs': 15,
-			'comment': len('Comment'),
-		}
-		if self.show_txid:
-			maxws['txid'] = self.txid_w
-			minws['txid'] = 8
-			maxws_nice = {'txid': 20}
-		else:
-			maxws['txid'] = 0
-			minws['txid'] = 0
-			maxws_nice = {}
-
-		widths = { # fixed cols
-			'num': max(2, len(str(len(data)))+1),
-			'date': self.age_w,
-			'amt': self.amt_widths['amt'],
-			'spc': 6 + self.show_txid, # 5(6) spaces between cols + 1 leading space in fs
-		}
-
-		return self.compute_column_widths(
-			widths,
-			maxws,
-			minws,
-			maxws_nice,
-			wide        = wide,
-			interactive = interactive)
+					'outputs', width=None, color=False, addr_view_pref=self.addr_view_pref))
+						for d in data),
+				'comment': max(len(d.comment)
+						for d in data)}
+		return self.column_widths_data(
+			widths = { # fixed cols
+				'num': max(2, len(str(len(data)))+1),
+				'date': self.age_w,
+				'amt': self.amt_widths['amt'],
+				'spc': 6 + self.show_txid}, # 5(6) spaces between cols + 1 leading space in fs
+			maxws = self.varcol_maxwidths | {'txid': self.txid_w if self.show_txid else 0},
+			minws = {
+				'inputs': 15,
+				'outputs': 15,
+				'comment': len('Comment')} | {'txid': 8 if self.show_txid else 0},
+			maxws_nice = {'txid': 20 if self.show_txid else 0})
 
 	def gen_squeezed_subheader(self, cw, color):
 		# keep these shorter than min screen width (currently prompt width, or 65 chars)
@@ -131,10 +115,12 @@ class TwTxHistory(TwView):
 				n = str(n) + ')',
 				t = d.txid_disp(width=cw.txid, color=color) if hasattr(cw, 'txid') else None,
 				d = d.age_disp(self.age_fmt, width=self.age_w, color=color),
-				i = d.vouts_disp('inputs', width=cw.inputs, color=color, addr_view_pref=self.addr_view_pref),
-				A = d.amt_disp(self.show_total_amt).fmt(iwidth=cw.iwidth, prec=self.disp_prec, color=color),
-				o = d.vouts_disp('outputs', width=cw.outputs, color=color, addr_view_pref=self.addr_view_pref),
-				c = d.comment.fmt2(width=cw.comment, color=color, nullrepl='-'))
+				i = d.vouts_disp(
+					'inputs', width=cw.inputs, color=color, addr_view_pref=self.addr_view_pref),
+				A = d.amt_disp(self.show_total_amt).fmt(cw.iwidth, prec=self.disp_prec, color=color),
+				o = d.vouts_disp(
+					'outputs', width=cw.outputs, color=color, addr_view_pref=self.addr_view_pref),
+				c = d.comment.fmt2(cw.comment, color=color, nullrepl='-'))
 
 	def gen_detail_display(self, data, cw, fs, color, fmt_method):
 
@@ -161,26 +147,26 @@ class TwTxHistory(TwView):
 				A = d.amt_disp(show_total_amt=True).hl(color=color),
 				B = d.amt_disp(show_total_amt=False).hl(color=color),
 				f = d.fee_disp(color=color),
-				i = d.vouts_list_disp('inputs', color=color, indent=' '*8, addr_view_pref=self.addr_view_pref),
+				i = d.vouts_list_disp(
+					'inputs', color=color, indent=' '*8, addr_view_pref=self.addr_view_pref),
 				N = d.nOutputs,
-				o = d.vouts_list_disp('outputs', color=color, indent=' '*8, addr_view_pref=self.addr_view_pref),
-			)
+				o = d.vouts_list_disp(
+					'outputs', color=color, indent=' '*8, addr_view_pref=self.addr_view_pref))
 
 	sort_disp = {
 		'age':         'Age',
 		'blockheight': 'Block Height',
 		'amt':         'Wallet Amt',
 		'total_amt':   'TX Amt',
-		'txid':        'TxID',
-	}
+		'txid':        'TxID'}
 
 	sort_funcs = {
-		'age':         lambda i: '{:010}.{:010}'.format(0xffffffff - abs(i.confirmations), i.time_received or 0),
-		'blockheight': lambda i: 0 - abs(i.confirmations), # old/altcoin daemons return no 'blockheight' field
+		'age':         lambda i: '{:010}.{:010}'.format(
+			0xffffffff - abs(i.confirmations), i.time_received or 0),
+		'blockheight': lambda i: 0 - abs(i.confirmations), # old/altcoin daemons lack 'blockheight' field
 		'amt':         lambda i: i.wallet_outputs_total,
 		'total_amt':   lambda i: i.outputs_total,
-		'txid':        lambda i: i.txid,
-	}
+		'txid':        lambda i: i.txid}
 
 	async def set_dates(self, _):
 		pass
@@ -192,14 +178,14 @@ class TwTxHistory(TwView):
 	class sort_action(TwView.sort_action):
 
 		def s_blockheight(self, parent):
-			parent.do_sort('blockheight')
+			parent.sort_data('blockheight')
 
 		def s_amt(self, parent):
-			parent.do_sort('amt')
+			parent.sort_data('amt')
 			parent.show_total_amt = False
 
 		def s_total_amt(self, parent):
-			parent.do_sort('total_amt')
+			parent.sort_data('total_amt')
 			parent.show_total_amt = True
 
 	class display_action(TwView.display_action):

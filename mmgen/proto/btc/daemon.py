@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -19,7 +19,7 @@ from ...util import list_gen
 from ...daemon import CoinDaemon, _nw, _dd
 
 class bitcoin_core_daemon(CoinDaemon):
-	daemon_data = _dd('Bitcoin Core', 280000, '28.0.0')
+	daemon_data = _dd('Bitcoin Core', 300000, '30.0.0')
 	exec_fn = 'bitcoind'
 	cli_fn = 'bitcoin-cli'
 	testnet_dir = 'testnet3'
@@ -30,8 +30,7 @@ class bitcoin_core_daemon(CoinDaemon):
 	datadirs = {
 		'linux': [gc.home_dir, '.bitcoin'],
 		'darwin': [gc.home_dir, 'Library', 'Application Support', 'Bitcoin'],
-		'win32': [os.getenv('APPDATA'), 'Bitcoin']
-	}
+		'win32': [os.getenv('APPDATA'), 'Bitcoin']}
 	avail_opts = ('no_daemonize', 'online', 'bdb_wallet')
 
 	def init_datadir(self):
@@ -124,7 +123,7 @@ class bitcoin_core_daemon(CoinDaemon):
 		return e.args[0]
 
 class bitcoin_cash_node_daemon(bitcoin_core_daemon):
-	daemon_data = _dd('Bitcoin Cash Node', 27010000, '27.1.0')
+	daemon_data = _dd('Bitcoin Cash Node', 28000100, '28.0.1')
 	exec_fn = 'bitcoind-bchn'
 	cli_fn = 'bitcoin-cli-bchn'
 	rpc_ports = _nw(8432, 18432, 18543) # use non-standard ports (core+100)
@@ -133,8 +132,7 @@ class bitcoin_cash_node_daemon(bitcoin_core_daemon):
 	datadirs = {
 		'linux': [gc.home_dir, '.bitcoin-bchn'],
 		'darwin': [gc.home_dir, 'Library', 'Application Support', 'Bitcoin-Cash-Node'],
-		'win32': [os.getenv('APPDATA'), 'Bitcoin-Cash-Node']
-	}
+		'win32': [os.getenv('APPDATA'), 'Bitcoin-Cash-Node']}
 
 	def set_comment_args(self, rpc, coinaddr, lbl):
 		# bitcoin-{abc, bchn} 'setlabel' RPC is broken, so use old 'importaddress' method to set label
@@ -163,5 +161,4 @@ class litecoin_core_daemon(bitcoin_core_daemon):
 	datadirs = {
 		'linux': [gc.home_dir, '.litecoin'],
 		'darwin': [gc.home_dir, 'Library', 'Application Support', 'Litecoin'],
-		'win32': [os.getenv('APPDATA'), 'Litecoin']
-	}
+		'win32': [os.getenv('APPDATA'), 'Litecoin']}

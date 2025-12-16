@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -14,7 +14,7 @@ altcoin.util: various altcoin-related utilities
 
 from ..util import die
 
-def decrypt_keystore(data, passwd, mac_algo=None, mac_params={}):
+def decrypt_keystore(data, passwd, *, mac_algo=None, mac_params={}):
 	"""
 	Decrypt the encrypted data in a cross-chain keystore
 	Returns the decrypted data as a bytestring
@@ -48,18 +48,16 @@ def decrypt_keystore(data, passwd, mac_algo=None, mac_params={}):
 	elif kdf == 'pbkdf2':
 		if (prf := parms.get('prf')) != 'hmac-sha256':
 			die(1, f"unsupported hash function {prf!r} (must be 'hmac-sha256')")
-		from cryptography.hazmat.primitives import hashes
-		from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-		hashed_pw = PBKDF2HMAC(
-			algorithm  = hashes.SHA256(),
-			length     = parms['dklen'],
+		from hashlib import pbkdf2_hmac, blake2b
+		hashed_pw = pbkdf2_hmac(
+			hash_name  = 'sha256',
+			password   = passwd,
 			salt       = bytes.fromhex(parms['salt']),
-			iterations = parms['c']
-		).derive(passwd)
+			iterations = parms['c'],
+			dklen      = parms['dklen'])
 		# see:
 		#   https://github.com/xchainjs/xchainjs-lib.git
 		#   https://github.com/xchainjs/foundry-primitives-js.git
-		from hashlib import blake2b
 		mac_algo = mac_algo or blake2b
 		mac_params = mac_params or {'digest_size': 32}
 

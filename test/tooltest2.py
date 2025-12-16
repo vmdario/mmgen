@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ from test.include.common import set_globals, end_msg, init_coverage
 from mmgen import main_tool
 from mmgen.cfg import Config
 from mmgen.color import green, blue, purple, cyan, gray
-from mmgen.util import msg, msg_r, Msg, die
+from mmgen.util import msg, msg_r, Msg, die, isAsync
 
 skipped_tests = ['mn2hex_interactive']
 coin_dependent_groups = ('Coin', 'File')
@@ -134,9 +134,7 @@ def call_method(cls, method, cmd_name, args, mmtype, stdin_input):
 			vmsg(f'Input: {stdin_input!r}')
 			sys.exit(0)
 	else:
-		ret = method(*aargs, **kwargs)
-		if type(ret).__name__ == 'coroutine':
-			ret = asyncio.run(ret)
+		ret = asyncio.run(method(*aargs, **kwargs)) if isAsync(method) else method(*aargs, **kwargs)
 		cfg._set_quiet(oq_save)
 		return ret
 
@@ -151,32 +149,41 @@ def tool_api(cls, cmd_name, args, opts):
 	return getattr(tool, cmd_name)(*pargs, **kwargs)
 
 def check_output(out, chk):
-	if isinstance(chk, str):
-		chk = chk.encode()
-	if isinstance(out, int):
-		out = str(out).encode()
-	if isinstance(out, str):
-		out = out.encode()
-	err_fs = "Output ({!r}) doesn't match expected output ({!r})"
+
+	match chk:
+		case str():
+			chk = chk.encode()
+
+	match out:
+		case int():
+			out = str(out).encode()
+		case str():
+			out = out.encode()
+
 	try:
 		outd = out.decode()
 	except:
 		outd = None
 
-	if type(chk).__name__ == 'function':
-		assert chk(outd), f'{chk.__name__}({outd}) failed!'
-	elif isinstance(chk, dict):
-		for k, v in chk.items():
-			if k == 'boolfunc':
-				assert v(outd), f'{v.__name__}({outd}) failed!'
-			elif k == 'value':
-				assert outd == v, err_fs.format(outd, v)
-			else:
-				outval = getattr(__builtins__, k)(out)
-				if outval != v:
-					die(1, f'{k}({out}) returned {outval}, not {v}!')
-	elif chk is not None:
-		assert out == chk, err_fs.format(out, chk)
+	err_fs = "Output ({!r}) doesn't match expected output ({!r})"
+
+	match type(chk).__name__:
+		case 'NoneType':
+			pass
+		case 'function':
+			assert chk(outd), f'{chk.__name__}({outd}) failed!'
+		case 'dict':
+			for k, v in chk.items():
+				match k:
+					case 'boolfunc':
+						assert v(outd), f'{v.__name__}({outd}) failed!'
+					case 'value':
+						assert outd == v, err_fs.format(outd, v)
+					case _:
+						if (outval := getattr(__builtins__, k)(out)) != v:
+							die(1, f'{k}({out}) returned {outval}, not {v}!')
+		case _:
+			assert out == chk, err_fs.format(out, chk)
 
 def run_test(cls, gid, cmd_name):
 	data = tests[gid][cmd_name]
@@ -246,7 +253,7 @@ def run_test(cls, gid, cmd_name):
 					cmd_out,
 					out[1],
 					func_out))
-		elif isinstance(out, (list, tuple)):
+		elif isinstance(out, list | tuple):
 			for co, o in zip(cmd_out.split(NL) if cfg.fork else cmd_out, out):
 				check_output(co, o)
 		else:

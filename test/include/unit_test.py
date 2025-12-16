@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,9 +30,9 @@ if not os.getenv('MMGEN_DEVTOOLS'):
 	from mmgen.devinit import init_dev
 	init_dev()
 
-from mmgen.cfg import Config, gc
+from mmgen.cfg import Config, gc, gv
 from mmgen.color import gray, brown, orange, yellow, red
-from mmgen.util import msg, msg_r, gmsg, ymsg, Msg
+from mmgen.util import msg, msg_r, gmsg, ymsg, Msg, isAsync
 
 from test.include.common import set_globals, end_msg
 
@@ -70,14 +70,9 @@ sys.argv.insert(1, '--skip-cfg-file')
 
 cfg = Config(opts_data=opts_data)
 
-if cfg.no_altcoin_deps:
-	ymsg(f'{gc.prog_name}: skipping altcoin tests by user request')
-
 type(cfg)._reset_ok += ('use_internal_keccak_module', 'debug_addrlist')
 
 set_globals(cfg)
-
-file_pfx = 'ut_'
 
 test_type = {
 	'modtest.py':    'unit',
@@ -88,9 +83,13 @@ test_subdir = gc.prog_name.removesuffix('.py') + '_d'
 
 test_dir = os.path.join(repo_root, 'test', test_subdir)
 
-all_tests = sorted(fn[len(file_pfx):-len('.py')] for fn in os.listdir(test_dir) if fn.startswith(file_pfx))
+all_tests = sorted(fn.removesuffix('.py') for fn in os.listdir(test_dir) if not fn.startswith('_'))
 
 exclude = cfg.exclude.split(',') if cfg.exclude else []
+
+if cfg.no_altcoin_deps:
+	ymsg(f'{gc.prog_name}: skipping altcoin tests by user request')
+	altcoin_tests = importlib.import_module(f'test.{test_subdir}').altcoin_tests
 
 for e in exclude:
 	if e not in all_tests:
@@ -105,7 +104,7 @@ if cfg.list:
 if cfg.list_subtests:
 	def gen():
 		for test in all_tests:
-			mod = importlib.import_module(f'test.{test_subdir}.{file_pfx}{test}')
+			mod = importlib.import_module(f'test.{test_subdir}.{test}')
 			if hasattr(mod, 'unit_tests'):
 				t = getattr(mod, 'unit_tests')
 				subtests = [k for k, v in t.__dict__.items() if type(v).__name__ == 'function' and k[0] != '_']
@@ -116,13 +115,28 @@ if cfg.list_subtests:
 	Msg(fs.format('TEST', 'SUBTESTS') + '\n' + '\n'.join(gen()))
 	sys.exit(0)
 
+def silence():
+	if not cfg.verbose:
+		global stdout_save, stderr_save
+		stdout_save = sys.stdout
+		stderr_save = sys.stderr
+		sys.stdout = sys.stderr = gv.stdout = gv.stderr = open(os.devnull, 'w')
+
+def end_silence():
+	if not cfg.verbose:
+		global stdout_save, stderr_save
+		sys.stdout = gv.stdout = stdout_save
+		sys.stderr = gv.stderr = stderr_save
+
 class UnitTestHelpers:
 
 	def __init__(self, subtest_name):
 		self.subtest_name = subtest_name
 
 	def skip_msg(self, desc):
-		cfg._util.qmsg(gray(f'Skipping subtest {self.subtest_name.replace("_", "-")!r} for {desc}'))
+		cfg._util.qmsg(gray(
+			f'Skipping {test_type} subtest {self.subtest_name.replace("_", "-")!r} for {desc}'
+		))
 
 	def process_bad_data(self, data, pfx='bad '):
 		if os.getenv('PYTHONOPTIMIZE'):
@@ -137,12 +151,10 @@ class UnitTestHelpers:
 		for (desc, exc_chk, emsg_chk, func) in data:
 			try:
 				cfg._util.vmsg_r('  {}{:{w}}'.format(pfx, desc+':', w=desc_w+1))
-				ret = func()
-				if type(ret).__name__ == 'coroutine':
-					asyncio.run(ret)
+				asyncio.run(func()) if isAsync(func) else func()
 			except Exception as e:
 				exc = type(e).__name__
-				emsg = e.args[0]
+				emsg = e.args[0] if e.args else '(unspecified error)'
 				cfg._util.vmsg(f' {exc:{exc_w}} [{emsg}]')
 				assert exc == exc_chk, m_exc.format(exc, exc_chk)
 				assert re.search(emsg_chk, emsg), m_err.format(emsg, emsg_chk)
@@ -152,14 +164,13 @@ class UnitTestHelpers:
 tests_seen = []
 
 def run_test(test, subtest=None):
-	mod = importlib.import_module(f'test.{test_subdir}.{file_pfx}{test}')
 
 	def run_subtest(t, subtest):
 		subtest_disp = subtest.replace('_', '-')
 		msg(brown(f'Running {test_type} subtest ') + orange(f'{test}.{subtest_disp}'))
 
 		if getattr(t, 'silence_output', False):
-			t._silence()
+			silence()
 
 		if hasattr(t, '_pre_subtest'):
 			getattr(t, '_pre_subtest')(test, subtest, UnitTestHelpers(subtest))
@@ -174,21 +185,23 @@ def run_test(test, subtest=None):
 				elif not cfg.quiet:
 					msg_r(f'Testing {func.__defaults__[0]}...')
 
-			ret = func(test, UnitTestHelpers(subtest))
-			if type(ret).__name__ == 'coroutine':
-				ret = asyncio.run(ret)
+			if isAsync(func):
+				ret = asyncio.run(func(test, UnitTestHelpers(subtest)))
+			else:
+				ret = func(test, UnitTestHelpers(subtest))
+
 			if do_desc and not cfg.quiet:
 				msg('OK\n' if cfg.verbose else 'OK')
 		except:
 			if getattr(t, 'silence_output', False):
-				t._end_silence()
+				end_silence()
 			raise
 
 		if hasattr(t, '_post_subtest'):
 			getattr(t, '_post_subtest')(test, subtest, UnitTestHelpers(subtest))
 
 		if getattr(t, 'silence_output', False):
-			t._end_silence()
+			end_silence()
 
 		if not ret:
 			die(4, f'Unit subtest {subtest_disp!r} failed')
@@ -197,9 +210,11 @@ def run_test(test, subtest=None):
 		gmsg(f'Running {test_type} test {test}')
 		tests_seen.append(test)
 
-	if cfg.no_altcoin_deps and getattr(mod, 'altcoin_dep', None):
-		cfg._util.qmsg(gray(f'Skipping {test_type} test {test!r} [--no-altcoin-deps]'))
+	if cfg.no_altcoin_deps and test in altcoin_tests:
+		msg(gray(f'Skipping {test_type} test {test!r} [--no-altcoin-deps]'))
 		return
+
+	mod = importlib.import_module(f'test.{test_subdir}.{test}')
 
 	if hasattr(mod, 'unit_tests'): # new class-based API
 		t = getattr(mod, 'unit_tests')()
@@ -207,25 +222,38 @@ def run_test(test, subtest=None):
 		win_skip = getattr(t, 'win_skip', ())
 		mac_skip = getattr(t, 'mac_skip', ())
 		arm_skip = getattr(t, 'arm_skip', ())
+		riscv_skip = getattr(t, 'riscv_skip', ())
+		fast_skip = getattr(t, 'fast_skip', ())
 		subtests = (
 			[subtest] if subtest else
 			[k for k, v in type(t).__dict__.items() if type(v).__name__ == 'function' and k[0] != '_']
 		)
 		if hasattr(t, '_pre'):
 			t._pre()
+
+		def subtest_skip_msg(name, add_msg):
+			cfg._util.qmsg(gray(
+				'Skipping {} subtest {!r} {}'.format(test_type, name.replace('_', '-'), add_msg)
+			))
+
 		for _subtest in subtests:
-			subtest_disp = _subtest.replace('_', '-')
 			if cfg.no_altcoin_deps and _subtest in altcoin_deps:
-				cfg._util.qmsg(gray(f'Skipping {test_type} subtest {subtest_disp!r} [--no-altcoin-deps]'))
+				subtest_skip_msg(_subtest, '[--no-altcoin-deps]')
+				continue
+			if cfg.fast and _subtest in fast_skip:
+				subtest_skip_msg(_subtest, '[--fast]')
 				continue
 			if sys.platform == 'win32' and _subtest in win_skip:
-				cfg._util.qmsg(gray(f'Skipping {test_type} subtest {subtest_disp!r} for Windows platform'))
+				subtest_skip_msg(_subtest, 'for Windows platform')
 				continue
 			if sys.platform == 'darwin' and _subtest in mac_skip:
-				cfg._util.qmsg(gray(f'Skipping {test_type} subtest {subtest_disp!r} for macOS platform'))
+				subtest_skip_msg(_subtest, 'for macOS platform')
 				continue
 			if platform.machine() == 'aarch64' and _subtest in arm_skip:
-				cfg._util.qmsg(gray(f'Skipping {test_type} subtest {subtest_disp!r} for ARM platform'))
+				subtest_skip_msg(_subtest, 'for ARM platform')
+				continue
+			if platform.machine() == 'riscv64' and _subtest in riscv_skip:
+				subtest_skip_msg(_subtest, 'for RISC-V platform')
 				continue
 			run_subtest(t, _subtest)
 		if hasattr(t, '_post'):

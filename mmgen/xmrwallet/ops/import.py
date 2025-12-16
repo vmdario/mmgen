@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -23,7 +23,7 @@ class OpImportOutputs(OpWallet):
 	action = 'importing wallet outputs into'
 	start_daemon = False
 
-	async def main(self, fn, wallet_idx, restart_daemon=True):
+	async def main(self, fn, wallet_idx, *, restart_daemon=True):
 		if restart_daemon:
 			await self.restart_wallet_daemon()
 		h = MoneroWalletRPC(self, self.addr_data[0])
@@ -61,7 +61,10 @@ class OpImportKeyImages(OpWallet):
 		die(2, f'No signed key image files found{rw_msg}!')
 
 	async def process_wallet(self, d, fn, last):
-		keyimage_fn = MoneroWalletOutputsFile.Signed.find_fn_from_wallet_fn(self.cfg, fn, ret_on_no_match=True)
+		keyimage_fn = MoneroWalletOutputsFile.Signed.find_fn_from_wallet_fn(
+			self.cfg,
+			fn,
+			ret_on_no_match = True)
 		if not keyimage_fn:
 			msg(f'No signed key image file found for wallet #{d.idx}')
 			return False

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -25,8 +25,8 @@ class wallet(wallet):
 
 	def get_bw_params(self):
 		# already checked
-		a = self.cfg.brain_params.split(',')
-		return int(a[0]), a[1]
+		a, b = self.cfg.brain_params.split(',', 1)
+		return int(a), b
 
 	def _deformat(self):
 		self.brainpasswd = ' '.join(self.fmt_data.split())
@@ -50,7 +50,7 @@ class wallet(wallet):
 			d.hash_preset,
 			buflen = bw_seed_len // 8)
 		self.cfg._util.qmsg('Done')
-		self.seed = Seed(self.cfg, seed)
+		self.seed = Seed(self.cfg, seed_bin=seed)
 		msg(f'Seed ID: {self.seed.sid}')
 		self.cfg._util.qmsg('Check this value against your records')
 		return True

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ def die2(exit_val, s):
 class GlobalConstants(Lockable):
 	"""
 	These values are non-runtime-configurable.  They’re constant for a given machine,
-	user, executable and MMGen release.
+	user, executable and MMGen Wallet version
 	"""
 	_autolock = True
 
@@ -44,42 +44,49 @@ class GlobalConstants(Lockable):
 	proj_url           = 'https://github.com/mmgen/mmgen-wallet'
 	author             = 'The MMGen Project'
 	email              = '<mmgen@tuta.io>'
-	Cdates             = '2013-2024'
+	Cdates             = '2013-2025'
 	dfl_hash_preset    = '3'
 	passwd_max_tries   = 5
 	min_screen_width   = 80
 	min_time_precision = 18
 
-	# must match CoinProtocol.coins
-	core_coins = ('btc', 'bch', 'ltc', 'eth', 'etc', 'zec', 'xmr')
-	rpc_coins = ('btc', 'bch', 'ltc', 'eth', 'etc', 'xmr')
+	# core_coins must match CoinProtocol.coins
+	core_coins = ('btc', 'bch', 'ltc', 'eth', 'etc', 'zec', 'xmr', 'rune')
+	rpc_coins = ('btc', 'bch', 'ltc', 'eth', 'etc', 'xmr', 'rune')
+	local_rpc_coins = ('btc', 'bch', 'ltc', 'eth', 'etc', 'xmr')
+	remote_rpc_coins = ('rune',)
 	btc_fork_rpc_coins = ('btc', 'bch', 'ltc')
 	eth_fork_coins = ('eth', 'etc')
 
-	_cc = namedtuple('cmd_cap', ['proto', 'rpc', 'coin', 'caps', 'platforms'])
+	# ‘use_coin_opt’ must be False if ‘coin_codes’ is set
+	_cc = namedtuple('cmd_cap', ['proto', 'rpc', 'use_coin_opt', 'coin_codes', 'caps', 'platforms'])
 	cmd_caps_data = {
-		'addrgen':      _cc(True,  False, None,  [],      'lmw'),
-		'addrimport':   _cc(True,  True,  'R',   ['tw'],  'lmw'),
-		'autosign':     _cc(True,  True,  'r',   ['rpc'], 'lm'),
-		'keygen':       _cc(True,  False, None,  [],      'lmw'),
-		'msg':          _cc(True,  True,  'R',   ['msg'], 'lmw'),
-		'passchg':      _cc(False, False, None,  [],      'lmw'),
-		'passgen':      _cc(False, False, None,  [],      'lmw'),
-		'regtest':      _cc(True,  True,  'b',   ['tw'],  'lmw'),
-		'seedjoin':     _cc(False, False, None,  [],      'lmw'),
-		'seedsplit':    _cc(False, False, None,  [],      'lmw'),
-		'subwalletgen': _cc(False, False, None,  [],      'lmw'),
-		'tool':         _cc(True,  True,  None,  [],      'lmw'),
-		'txbump':       _cc(True,  True,  'R',   ['tw'],  'lmw'),
-		'txcreate':     _cc(True,  True,  'R',   ['tw'],  'lmw'),
-		'txdo':         _cc(True,  True,  'R',   ['tw'],  'lmw'),
-		'txsend':       _cc(True,  True,  'R',   ['tw'],  'lmw'),
-		'txsign':       _cc(True,  True,  'R',   ['tw'],  'lmw'),
-		'walletchk':    _cc(False, False, None,  [],      'lmw'),
-		'walletconv':   _cc(False, False, None,  [],      'lmw'),
-		'walletgen':    _cc(False, False, None,  [],      'lmw'),
-		'xmrwallet':    _cc(True,  True,  'xmr', ['rpc'], 'lmw'),
-	}
+		'addrgen':      _cc(True,  False, True,  None,     [],      'lmw'),
+		'addrimport':   _cc(True,  True,  True,  None,     ['tw'],  'lmw'),
+		'autosign':     _cc(True,  True,  False, '-bRrXx', ['rpc'], 'lm'),
+		'cli':          _cc(True,  True,  True,  None,     ['tw'],  'lmw'),
+		'keygen':       _cc(True,  False, True,  None,     [],      'lmw'),
+		'msg':          _cc(True,  True,  True,  None,     ['msg'], 'lmw'),
+		'passchg':      _cc(False, False, False, None,     [],      'lmw'),
+		'passgen':      _cc(False, False, False, None,     [],      'lmw'),
+		'regtest':      _cc(True,  True,  True,  None,     ['tw'],  'lmw'),
+		'seedjoin':     _cc(False, False, False, None,     [],      'lmw'),
+		'seedsplit':    _cc(False, False, False, None,     [],      'lmw'),
+		'subwalletgen': _cc(False, False, False, None,     [],      'lmw'),
+		'swaptxcreate': _cc(True,  True,  False, '-bRrx',  ['tw'],  'lmw'),
+		'swaptxdo':     _cc(True,  True,  False, '-bRrx',  ['tw'],  'lmw'),
+		'tool':         _cc(True,  True,  True,  None,     [],      'lmw'),
+		'txbump':       _cc(True,  True,  True,  None,     ['tw'],  'lmw'),
+		'txcreate':     _cc(True,  True,  True,  None,     ['tw'],  'lmw'),
+		'txdo':         _cc(True,  True,  True,  None,     ['tw'],  'lmw'),
+		'txsend':       _cc(True,  True,  False, '-bRrXx', ['tw'],  'lmw'),
+		'txsign':       _cc(True,  True,  False, '-bRrXx', ['tw'],  'lmw'),
+		'walletchk':    _cc(False, False, False, None,     [],      'lmw'),
+		'walletconv':   _cc(False, False, False, None,     [],      'lmw'),
+		'walletgen':    _cc(False, False, False, None,     [],      'lmw'),
+		'xmrwallet':    _cc(True,  True,  False, '-rx',    ['rpc'], 'lmw')}
+
+	altcoin_cmds = ('swaptxcreate', 'swaptxdo', 'xmrwallet')
 
 	prog_name = os.path.basename(sys.argv[0])
 	prog_id = prog_name.removeprefix(f'{proj_id}-')
@@ -95,7 +102,7 @@ class GlobalConstants(Lockable):
 	else:
 		die2(2, '$HOME is not set!  Unable to determine home directory')
 
-	def get_mmgen_data_file(self, filename, package='mmgen'):
+	def read_mmgen_data_file(self, *, filename, package='mmgen'):
 		"""
 		this is an expensive import, so do only when required
 		"""
@@ -106,23 +113,19 @@ class GlobalConstants(Lockable):
 		#    https://importlib-resources.readthedocs.io/en/latest/migration.html
 		#    https://setuptools.readthedocs.io/en/latest/pkg_resources.html
 
-		# TODO: remove try..except (workaround for Python 3.9 pylint bug)
-		try:
-			from importlib.resources import files # Python 3.9 and above
-		except ImportError:
-			from importlib_resources import files
+		from importlib.resources import files
 		return files(package).joinpath('data', filename).read_text()
 
 	@property
 	def version(self):
-		return self.get_mmgen_data_file(
+		return self.read_mmgen_data_file(
 				filename = 'version',
 				package  = 'mmgen_node_tools' if self.prog_name.startswith('mmnode-') else 'mmgen'
 			).strip()
 
 	@property
 	def release_date(self):
-		return self.get_mmgen_data_file(filename='release_date').strip()
+		return self.read_mmgen_data_file(filename='release_date').strip()
 
 gc = GlobalConstants()
 
@@ -144,7 +147,7 @@ class Config(Lockable):
 	  3 - config file
 	"""
 	_autolock = False
-	_set_ok = ('usr_randchars', '_proto')
+	_set_ok = ('usr_randchars', '_proto', 'aiohttp_session')
 	_reset_ok = ('accept_defaults',)
 	_delete_ok = ('_opts',)
 	_use_class_attr = True
@@ -167,7 +170,8 @@ class Config(Lockable):
 	no_license      = False
 
 	# limits
-	http_timeout       = 60
+	http_timeout       = 0
+	daemon_state_timeout = 60
 	usr_randchars      = 30
 	fee_adjust         = 1.0
 	fee_estimate_confs = 3
@@ -181,6 +185,7 @@ class Config(Lockable):
 	# debug
 	debug                = False
 	debug_daemon         = False
+	debug_evm            = False
 	debug_opts           = False
 	debug_rpc            = False
 	debug_addrlist       = False
@@ -195,6 +200,7 @@ class Config(Lockable):
 	rpc_user              = ''
 	rpc_password          = ''
 	aiohttp_rpc_queue_len = 16
+	aiohttp_session       = None
 	cached_balances       = False
 
 	# daemons
@@ -219,12 +225,14 @@ class Config(Lockable):
 	force_standalone_scrypt_module = False
 	enable_erigon                  = False
 	autochg_ignore_labels          = False
+	autosign                       = False
 
 	# regtest:
 	bob          = False
 	alice        = False
 	carol        = False
-	regtest_user = ''
+	miner        = False
+	test_user    = ''
 
 	# altcoin:
 	cashaddr = True
@@ -232,6 +240,8 @@ class Config(Lockable):
 	# Monero:
 	monero_wallet_rpc_user     = 'monero'
 	monero_wallet_rpc_password = ''
+	monero_daemon              = ''
+	xmrwallet_compat           = False
 	priority                   = 0
 
 	# test suite:
@@ -243,10 +253,12 @@ class Config(Lockable):
 	test_suite               = False
 	test_suite_autosign_led_simulate = False
 	test_suite_autosign_threaded = False
+	test_suite_devnet_block_period = 0
 	test_suite_xmr_autosign  = False
 	test_suite_cfgtest       = False
 	test_suite_deterministic = False
 	test_suite_pexpect       = False
+	test_suite_pexpect_timeout = 0
 	test_suite_popen_spawn   = False
 	test_suite_root_pfx      = ''
 	hold_protect_disable     = False
@@ -274,52 +286,46 @@ class Config(Lockable):
 
 	_incompatible_opts = (
 		('help', 'longhelp'),
-		('bob', 'alice', 'carol'),
+		('bob', 'alice', 'carol', 'miner'),
 		('label', 'keep_label'),
 		('tx_id', 'info'),
 		('tx_id', 'terse_info'),
 		('autosign', 'outdir'),
 	)
 
+	# proto-specific only: eth_mainnet_chain_names eth_testnet_chain_names
+	# coin-specific only:  bch_cashaddr (alias of cashaddr)
 	_cfg_file_opts = (
 		'autochg_ignore_labels',
+		'autosign',
 		'color',
 		'daemon_data_dir',
+		'daemon_id', # also coin-specific
 		'debug',
 		'fee_adjust',
 		'force_256_color',
 		'hash_preset',
 		'http_timeout',
+		'ignore_daemon_version', # also coin-specific
 		'macos_autosign_ramdisk_size',
 		'max_input_size',
 		'max_tx_file_size',
 		'mnemonic_entry_modes',
+		'xmrwallet_compat',
 		'monero_wallet_rpc_password',
 		'monero_wallet_rpc_user',
 		'no_license',
 		'quiet',
 		'regtest',
-		'rpc_host',
-		'rpc_password',
-		'rpc_port',
-		'rpc_user',
+		'rpc_host',     # also coin-specific
+		'rpc_password', # also coin-specific
+		'rpc_port',     # also coin-specific
+		'rpc_user',     # also coin-specific
 		'scroll',
 		'subseeds',
 		'testnet',
-		'usr_randchars',
-		'bch_cashaddr',
-		'bch_max_tx_fee',
-		'btc_max_tx_fee',
-		'eth_max_tx_fee',
-		'ltc_max_tx_fee',
-		'bch_ignore_daemon_version',
-		'btc_ignore_daemon_version',
-		'etc_ignore_daemon_version',
-		'eth_ignore_daemon_version',
-		'ltc_ignore_daemon_version',
-		'xmr_ignore_daemon_version',
-		'eth_mainnet_chain_names',
-		'eth_testnet_chain_names')
+		'tw_name',      # also coin-specific
+		'usr_randchars')
 
 	# Supported environmental vars
 	# The corresponding attributes (lowercase, without 'mmgen_') must exist in the class.
@@ -331,19 +337,23 @@ class Config(Lockable):
 		'MMGEN_TEST_SUITE',
 		'MMGEN_TEST_SUITE_AUTOSIGN_LED_SIMULATE',
 		'MMGEN_TEST_SUITE_AUTOSIGN_THREADED',
+		'MMGEN_TEST_SUITE_DEVNET_BLOCK_PERIOD',
 		'MMGEN_TEST_SUITE_XMR_AUTOSIGN',
 		'MMGEN_TEST_SUITE_CFGTEST',
 		'MMGEN_TEST_SUITE_DETERMINISTIC',
 		'MMGEN_TEST_SUITE_ENABLE_COLOR',
 		'MMGEN_TEST_SUITE_PEXPECT',
+		'MMGEN_TEST_SUITE_PEXPECT_TIMEOUT',
 		'MMGEN_TEST_SUITE_POPEN_SPAWN',
 		'MMGEN_TEST_SUITE_ROOT_PFX',
 		'MMGEN_TRACEBACK',
 		'MMGEN_BLACKLIST_DAEMONS',
 		'MMGEN_BOGUS_SEND',
 		'MMGEN_BOGUS_UNSPENT_DATA',
+		'MMGEN_DAEMON_STATE_TIMEOUT',
 		'MMGEN_DEBUG',
 		'MMGEN_DEBUG_DAEMON',
+		'MMGEN_DEBUG_EVM',
 		'MMGEN_DEBUG_OPTS',
 		'MMGEN_DEBUG_RPC',
 		'MMGEN_DEBUG_ADDRLIST',
@@ -368,6 +378,7 @@ class Config(Lockable):
 		'MMGEN_ENABLE_ERIGON',
 		'MMGEN_DISABLE_COLOR',
 	)
+
 	_infile_opts = (
 		'keys_from_file',
 		'mmgen_keys_from_file',
@@ -376,18 +387,21 @@ class Config(Lockable):
 		'comment_file',
 		'contract_data',
 	)
+
 	# Auto-typechecked and auto-set opts - first value in list is the default
 	_ov = namedtuple('autoset_opt_info', ['type', 'choices'])
 	_autoset_opts = {
 		'fee_estimate_mode': _ov('nocase_pfx', ['conservative', 'economical']),
 		'rpc_backend':       _ov('nocase_pfx', ['auto', 'httplib', 'curl', 'aiohttp', 'requests']),
-	}
+		'swap_proto':        _ov('nocase_pfx', ['thorchain']),
+		'tx_proxy':          _ov('nocase_pfx', ['etherscan'])} # , 'blockchair'
+
+	_dfl_none_autoset_opts = ('tx_proxy',)
 
 	_auto_typeset_opts = {
 		'seed_len': int,
 		'subseeds': int,
-		'vsize_adj': float,
-	}
+		'vsize_adj': float}
 
 	# test suite:
 	err_disp_timeout   = 0.7
@@ -426,22 +440,26 @@ class Config(Lockable):
 	@property
 	def data_dir(self):
 		"""
-		location of wallet and other data - same as data_dir_root for mainnet
+		location of wallet and other data
 		"""
 		if not hasattr(self, '_data_dir'):
-			self._data_dir = os.path.normpath(os.path.join(*{
-				'regtest': (self.data_dir_root, 'regtest', (self.regtest_user or 'none')),
-				'testnet': (self.data_dir_root, 'testnet'),
-				'mainnet': (self.data_dir_root,),
-			}[self.network]))
+			def make_path():
+				match self.network:
+					case 'mainnet':
+						return (self.data_dir_root, self.test_user)
+					case 'testnet':
+						return (self.data_dir_root, 'testnet', self.test_user)
+					case 'regtest':
+						return (self.data_dir_root, 'regtest', (self.test_user or 'none'))
+			self._data_dir = os.path.normpath(os.path.join(*make_path()))
 		return self._data_dir
 
 	def __init__(
 			self,
 			cfg          = None,
+			*,
 			opts_data    = None,
 			init_opts    = None,
-			opt_filter   = None,
 			parse_only   = False,
 			parsed_opts  = None,
 			need_proto   = True,
@@ -463,10 +481,9 @@ class Config(Lockable):
 				cfg          = self,
 				opts_data    = opts_data,
 				init_opts    = init_opts,
-				opt_filter   = opt_filter,
 				parsed_opts  = parsed_opts,
 				need_proto   = need_proto)
-			self._uopt_desc = 'command-line option'
+			self._uopt_src = 'cmdline'
 		else:
 			if cfg is None:
 				self._uopts = {}
@@ -479,13 +496,13 @@ class Config(Lockable):
 							setattr(self, k, v)
 					del cfg['_clone']
 				self._uopts = cfg
-			self._uopt_desc = 'configuration option'
+			self._uopt_src = 'cfg'
 
 		self._data_dir_root_override = self._cloned.pop(
 			'_data_dir_root_override',
 			self._uopts.pop('data_dir', None))
 
-		if parse_only and not any(k in self._uopts for k in ['help', 'longhelp']):
+		if parse_only and not any(k in self._uopts for k in ['help', 'longhelp', 'usage']):
 			return
 
 		# Step 2: set cfg from user-supplied data, skipping auto opts; set type from corresponding
@@ -502,7 +519,7 @@ class Config(Lockable):
 						self,
 						key,
 						getattr(type(self), key) if val is None else
-							conv_type(key, val, getattr(type(self), key), self._uopt_desc))
+							conv_type(key, val, getattr(type(self), key), src=self._uopt_src))
 				elif val is None:
 					if hasattr(self, key):
 						delattr(self, key)
@@ -524,7 +541,7 @@ class Config(Lockable):
 		# Step 4: set cfg from cfgfile, skipping already-set opts and auto opts; save set opts and auto
 		#         opts to be set:
 		# requires ‘data_dir_root’, ‘test_suite_cfgtest’
-		self._cfgfile_opts = self._set_cfg_from_cfg_file(self._envopts, need_proto)
+		self._cfgfile_opts = self._set_cfg_from_cfg_file(self._envopts, need_proto=need_proto)
 
 		# Step 5: set autoset opts from user-supplied data, cfgfile data, or default values, in that order:
 		self._set_autoset_opts(self._cfgfile_opts.autoset)
@@ -532,14 +549,34 @@ class Config(Lockable):
 		# Step 6: set auto typeset opts from user-supplied data or cfgfile data, in that order:
 		self._set_auto_typeset_opts(self._cfgfile_opts.auto_typeset)
 
-		if self.regtest or self.bob or self.alice or self.carol or gc.prog_name == f'{gc.proj_id}-regtest':
-			self.network = 'regtest'
-			self.regtest_user = 'bob' if self.bob else 'alice' if self.alice else 'carol' if self.carol else None
-		else:
-			self.network = 'testnet' if self.testnet else 'mainnet'
+		# Step 7: set opts_data['sets'] opts:
+		if opts_data and 'sets' in opts_data:
+			self._set_opts_data_sets_opts(opts_data)
 
 		self.coin = self.coin.upper()
 		self.token = self.token.upper() if self.token else None
+
+		if (
+				self.regtest or
+				self.bob or
+				self.alice or
+				self.carol or
+				self.miner or
+				gc.prog_name == f'{gc.proj_id}-regtest'):
+			if self.coin != 'XMR':
+				self.network = 'regtest'
+			self.test_user = (
+				'bob' if self.bob else
+				'alice' if self.alice else
+				'carol' if self.carol else
+				'miner' if self.miner else
+				'')
+		else:
+			self.network = 'testnet' if self.testnet else 'mainnet'
+
+		if 'usage' in self._uopts: # requires self.coin
+			import importlib
+			getattr(importlib.import_module(UserOpts.help_pkg), 'usage')(self) # exits
 
 		# self.color is finalized, so initialize color:
 		if self.color: # MMGEN_DISABLE_COLOR sets this to False
@@ -561,6 +598,9 @@ class Config(Lockable):
 		self._util = Util(self)
 
 		del self._cloned
+
+		if hasattr(self, 'bch_cashaddr') and not hasattr(self, 'cashaddr'):
+			self.cashaddr = self.bch_cashaddr
 
 		self._lock()
 
@@ -603,14 +643,14 @@ class Config(Lockable):
 						setattr(
 							self,
 							gname,
-							conv_type(name, val, getattr(self, gname), 'environment var', invert_bool=disable))
+							conv_type(name, val, getattr(self, gname), src='env', invert_bool=disable))
 						yield gname
 					else:
 						raise ValueError(f'Name {gname!r} not present in globals')
 			else:
 				raise ValueError(f'{name!r} is not a valid MMGen environment variable')
 
-	def _set_cfg_from_cfg_file(self, env_cfg, need_proto):
+	def _set_cfg_from_cfg_file(self, env_cfg, *, need_proto):
 
 		_ret = namedtuple('cfgfile_opts', ['non_auto', 'autoset', 'auto_typeset'])
 
@@ -633,34 +673,29 @@ class Config(Lockable):
 		non_auto_opts = []
 		already_set = tuple(self._uopts) + env_cfg
 
+		def set_opt(d, obj, name, refval):
+			val = ucfg.parse_value(d.value, refval)
+			if not val:
+				die('CfgFileParseError', f'Parse error in file {ucfg.fn!r}, line {d.lineno}')
+			val_conv = conv_type(name, val, refval, src=ucfg.fn)
+			setattr(obj, name, val_conv)
+			non_auto_opts.append(name)
+
 		for d in ucfg.get_lines():
 			if d.name in self._cfg_file_opts:
-				ns = d.name.split('_')
-				if ns[0] in gc.core_coins:
-					if not need_proto:
-						continue
-					nse, tn = (
-						(ns[2:], ns[1]=='testnet') if len(ns) > 2 and ns[1] in ('mainnet', 'testnet') else
-						(ns[1:], False)
-					)
-					# no instance yet, so override _class_ attr:
-					cls = init_proto(self, ns[0], tn, need_amt=True, return_cls=True)
-					attr = '_'.join(nse)
-				else:
-					cls = self
-					attr = d.name
-				refval = getattr(cls, attr)
-				val = ucfg.parse_value(d.value, refval)
-				if not val:
-					die('CfgFileParseError', f'Parse error in file {ucfg.fn!r}, line {d.lineno}')
-				val_conv = conv_type(attr, val, refval, 'configuration file option', src=ucfg.fn)
-				if not attr in already_set:
-					setattr(cls, attr, val_conv)
-					non_auto_opts.append(attr)
+				if not d.name in already_set:
+					set_opt(d, self, d.name, getattr(self, d.name))
 			elif d.name in self._autoset_opts:
 				autoset_opts[d.name] = d.value
 			elif d.name in self._auto_typeset_opts:
 				auto_typeset_opts[d.name] = d.value
+			elif any(d.name.startswith(coin + '_') for coin in gc.rpc_coins):
+				if need_proto and not d.name in already_set:
+					try:
+						refval = init_proto(self, d.name.split('_', 1)[0]).get_opt_clsval(self, d.name)
+					except AttributeError:
+						die('CfgFileParseError', f'{d.name!r}: unrecognized option in {ucfg.fn!r}, line {d.lineno}')
+					set_opt(d, self, d.name, refval)
 			else:
 				die('CfgFileParseError', f'{d.name!r}: unrecognized option in {ucfg.fn!r}, line {d.lineno}')
 
@@ -704,23 +739,18 @@ class Config(Lockable):
 
 		# Check autoset opts, setting if unset
 		for key in self._autoset_opts:
-
-			if key in self._cloned:
-				continue
-
-			assert not hasattr(self, key), f'autoset opt {key!r} is already set, but it shouldn’t be!'
-
 			if key in self._uopts:
 				val, src = (self._uopts[key], 'cmdline')
+				setattr(self, key, get_autoset_opt(key, val, src=src))
+			elif key in self._cloned:
+				pass
 			elif key in cfgfile_autoset_opts:
 				val, src = (cfgfile_autoset_opts[key], 'cfgfile')
-			else:
-				val = None
-
-			if val is None:
-				setattr(self, key, self._autoset_opts[key].choices[0])
-			else:
 				setattr(self, key, get_autoset_opt(key, val, src=src))
+			elif hasattr(self, key):
+				raise ValueError(f'autoset opt {key!r} is already set, but it shouldn’t be!')
+			elif key not in self._dfl_none_autoset_opts:
+				setattr(self, key, self._autoset_opts[key].choices[0])
 
 	def _set_auto_typeset_opts(self, cfgfile_auto_typeset_opts):
 
@@ -733,6 +763,19 @@ class Config(Lockable):
 				do_set(key, self._uopts[key], ref_type)
 			elif key in cfgfile_auto_typeset_opts:
 				do_set(key, cfgfile_auto_typeset_opts[key], ref_type)
+
+	def _set_opts_data_sets_opts(self, opts_data):
+		for a_opt, a_val, b_opt, b_val in opts_data['sets']:
+			if (usr_a_val := getattr(self, a_opt, None)) not in (None, False):
+				if a_val == bool or usr_a_val == a_val:
+					if ((usr_b_val := getattr(self, b_opt, None)) in (None, False)) or usr_b_val == b_val:
+						setattr(self, b_opt, b_val)
+					else:
+						die(1, 'Option --{}={} conflicts with option --{}={}\n'.format(
+							b_opt.replace('_', '-'),
+							usr_b_val,
+							a_opt.replace('_', '-'),
+							usr_a_val))
 
 	def _die_on_incompatible_opts(self):
 		for group in self._incompatible_opts:
@@ -754,14 +797,14 @@ def check_opts(cfg): # Raises exception if any check fails
 			(desc_pfx + ' ' if desc_pfx else '')
 			+ (
 				f'parameter for command-line option {fmt_opt(name)!r}'
-					if name in cfg._uopts and 'command-line' in cfg._uopt_desc else
+					if name in cfg._uopts and cfg._uopt_src == 'cmdline' else
 				f'value for configuration option {name!r}'
 			)
 			+ (' from environment' if name in cfg._envopts else '')
 			+ (f' in {cfg._cfgfile_fn!r}' if name in cfg._cfgfile_opts.non_auto else '')
 		)
 
-	def display_opt(name, val='', beg='For selected', end=':\n'):
+	def display_opt(name, val='', *, beg='For selected', end=':\n'):
 		from .util import msg_r
 		msg_r('{} option {!r}{}'.format(
 			beg,
@@ -779,11 +822,11 @@ def check_opts(cfg): # Raises exception if any check fails
 		}[op_str](val, target):
 			die('UserOptError', f'{val}: invalid {get_desc()} (not {op_str} {target})')
 
-	def opt_is_int(val, desc_pfx=''):
+	def opt_is_int(val, *, desc_pfx=''):
 		if not is_int(val):
 			die('UserOptError', f'{val!r}: invalid {get_desc(desc_pfx)} (not an integer)')
 
-	def opt_is_in_list(val, tlist, desc_pfx=''):
+	def opt_is_in_list(val, tlist, *, desc_pfx=''):
 		if val not in tlist:
 			q, sep = (('', ','), ("'", "','"))[isinstance(tlist[0], str)]
 			die('UserOptError', '{q}{v}{q}: invalid {w}\nValid choices: {q}{o}{q}'.format(
@@ -804,53 +847,53 @@ def check_opts(cfg): # Raises exception if any check fails
 				opt_unrecognized()
 			if name == 'out_fmt':
 				p = 'hidden_incog_output_params'
-
-				if wd.type == 'incog_hidden' and not getattr(cfg, p):
-					die('UserOptError',
-						'Hidden incog format output requested.  ' +
-						f'You must supply a file and offset with the {fmt_opt(p)!r} option')
-
-				if wd.base_type == 'incog_base' and cfg.old_incog_fmt:
-					display_opt(name, val, beg='Selected', end=' ')
-					display_opt('old_incog_fmt', beg='conflicts with', end=':\n')
-					die('UserOptError', 'Export to old incog wallet format unsupported')
-				elif wd.type == 'brain':
-					die('UserOptError', 'Output to brainwallet format unsupported')
+				match wd.type:
+					case 'incog_hidden' if not getattr(cfg, p):
+						die('UserOptError',
+							'Hidden incog format output requested.  ' +
+							f'You must supply a file and offset with the {fmt_opt(p)!r} option')
+					case ('incog' | 'incog_hex' | 'incog_hidden') if cfg.old_incog_fmt:
+						display_opt(name, val, beg='Selected', end=' ')
+						display_opt('old_incog_fmt', beg='conflicts with', end=':\n')
+						die('UserOptError', 'Export to old incog wallet format unsupported')
+					case 'brain':
+						die('UserOptError', 'Output to brainwallet format unsupported')
 
 		out_fmt = in_fmt
 
-		def hidden_incog_input_params():
-			a = val.rsplit(',', 1) # permit comma in filename
-			if len(a) != 2:
-				display_opt(name, val)
-				die('UserOptError', 'Option requires two comma-separated arguments')
-
-			fn, offset = a
-			opt_is_int(offset)
+		def hidden_incog_params():
+			match val.rsplit(',', 1): # permit comma in filename
+				case [fn, offset]:
+					opt_is_int(offset)
+				case _:
+					display_opt(name, val)
+					die('UserOptError', 'Option requires two comma-separated arguments')
 
 			from .fileutil import check_infile, check_outdir, check_outfile
-			if name == 'hidden_incog_input_params':
-				check_infile(fn, blkdev_ok=True)
-				key2 = 'in_fmt'
-			else:
-				try:
-					os.stat(fn)
-				except:
-					b = os.path.dirname(fn)
-					if b:
-						check_outdir(b)
-				else:
-					check_outfile(fn, blkdev_ok=True)
-				key2 = 'out_fmt'
+			match name:
+				case 'hidden_incog_input_params':
+					check_infile(fn, blkdev_ok=True)
+					key2 = 'in_fmt'
+				case 'hidden_incog_output_params':
+					try:
+						os.stat(fn)
+					except:
+						b = os.path.dirname(fn)
+						if b:
+							check_outdir(b)
+					else:
+						check_outfile(fn, blkdev_ok=True)
+					key2 = 'out_fmt'
 
 			if hasattr(cfg, key2):
 				val2 = getattr(cfg, key2)
 				from .wallet import get_wallet_data
-				wd = get_wallet_data('incog_hidden')
+				wd = get_wallet_data(wtype='incog_hidden')
 				if val2 and val2 not in wd.fmt_codes:
-					die('UserOptError', f'Option conflict:\n  {fmt_opt(name)}, with\n  {fmt_opt(key2)}={val2}')
+					die('UserOptError',
+						f'Option {fmt_opt(name)} conflicts with option {fmt_opt(key2)}={val2}')
 
-		hidden_incog_output_params = hidden_incog_input_params
+		hidden_incog_output_params = hidden_incog_input_params = hidden_incog_params
 
 		def subseeds():
 			from .subseed import SubSeedIdxRange
@@ -866,17 +909,19 @@ def check_opts(cfg): # Raises exception if any check fails
 			opt_is_in_list(val, list(Crypto.hash_presets.keys()))
 
 		def brain_params():
-			a = val.split(',')
-			if len(a) != 2:
-				display_opt(name, val)
-				die('UserOptError', 'Option requires two comma-separated arguments')
-
-			opt_is_int(a[0], desc_pfx='seed length')
-			from .seed import Seed
-			opt_is_in_list(int(a[0]), Seed.lens, desc_pfx='seed length')
-
-			from .crypto import Crypto
-			opt_is_in_list(a[1], list(Crypto.hash_presets.keys()), desc_pfx='hash preset')
+			match val.split(',', 1):
+				case [seed_len, hash_preset]:
+					opt_is_int(seed_len, desc_pfx='seed length')
+					from .seed import Seed
+					opt_is_in_list(int(seed_len), Seed.lens, desc_pfx='seed length')
+					from .crypto import Crypto
+					opt_is_in_list(
+						hash_preset,
+						list(Crypto.hash_presets.keys()),
+						desc_pfx = 'hash preset')
+				case _:
+					display_opt(name, val)
+					die('UserOptError', 'Option requires two comma-separated arguments')
 
 		def usr_randchars():
 			if val != 0:
@@ -930,23 +975,22 @@ def opt_postproc_debug(cfg):
 	Msg('        {}\n'.format('\n        '.join(none_opts)))
 	Msg('\n=== end opts.py debug ===\n')
 
-def conv_type(
-		name,
-		val,
-		refval,
-		desc,
-		invert_bool = False,
-		src         = None):
+def conv_type(name, val, refval, *, src, invert_bool=False):
 
 	def do_fail():
-		die(1, '{a!r}: invalid value for {b} {c!r}{d} (must be of type {e!r})'.format(
+		desc = {
+			'cmdline': 'command-line',
+			'cfg':     'Config',
+			'env':     'environment var'}
+		die(1, '{a!r}: invalid value for {b} option {c!r}{d} (must be of type {e!r})'.format(
 			a = val,
-			b = desc,
-			c = fmt_opt(name) if 'command-line' in desc else name,
-			d = f' in {src!r}' if src else '',
+			b = desc.get(src, 'config file'),
+			c = fmt_opt(name) if src == 'cmdline' else name,
+			d = '' if src in ('cmdline', 'cfg', 'env') else f' in {src!r}',
 			e = type(refval).__name__))
 
-	if type(refval) is bool:
+	# refval is None = boolean opt with no cmdline parameter
+	if type(refval) is bool or refval is None:
 		v = str(val).lower()
 		ret = (
 			True  if v in ('true', 'yes', '1', 'on') else
@@ -954,6 +998,12 @@ def conv_type(
 			None
 		)
 		return do_fail() if ret is None else (not ret) if invert_bool else ret
+	elif isinstance(refval, list | tuple):
+		if src == 'cmdline':
+			return type(refval)(val.split(','))
+		else:
+			assert isinstance(val, list | tuple), f'{val}: not a list or tuple'
+			return type(refval)(val)
 	else:
 		try:
 			return type(refval)(not val if invert_bool else val)

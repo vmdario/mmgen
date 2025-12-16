@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -73,9 +73,7 @@ For usage examples, see the help screen for the 'mmgen-seedsplit' command.
 
 {n_pw}
 
-FMT CODES:
-
-  {f}
+{f}
 """
 	},
 	'code': {
@@ -133,7 +131,7 @@ do_license_msg(cfg)
 cfg._util.qmsg('Input files:\n  {}\n'.format('\n  '.join(cfg._args)))
 
 shares = [Wallet(cfg).seed] if cfg.hidden_incog_input_params else []
-shares += [Wallet(cfg,fn).seed for fn in cfg._args]
+shares += [Wallet(cfg, fn=fn).seed for fn in cfg._args]
 
 if cfg.master_share:
 	share1 = SeedShareMasterJoining(cfg, master_idx, shares[0], id_str, len(shares)).derived_seed

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -45,8 +45,8 @@ class TwMMGenID(HiliteStr, InitErrors, MMGenObject):
 		me.proto = proto
 		return me
 
-	def fmt(self, **kwargs):
-		return super().fmtc(self.disp, **kwargs)
+	def fmt(self, width, /, **kwargs):
+		return super().fmtc(self.disp, width, **kwargs)
 
 # non-displaying container for TwMMGenID, TwComment
 class TwLabel(str, InitErrors, MMGenObject):
@@ -56,9 +56,12 @@ class TwLabel(str, InitErrors, MMGenObject):
 		if isinstance(text, cls):
 			return text
 		try:
-			ts = text.split(None, 1)
-			mmid = TwMMGenID(proto, ts[0])
-			comment = TwComment(ts[1] if len(ts) == 2 else '')
+			match text.split(None, 1):
+				case [mmid_in]:
+					comment = TwComment('')
+				case [mmid_in, comment]:
+					comment = TwComment(comment)
+			mmid = TwMMGenID(proto, mmid_in)
 			me = str.__new__(cls, mmid + (' ' + comment if comment else ''))
 			me.mmid = mmid
 			me.comment = comment

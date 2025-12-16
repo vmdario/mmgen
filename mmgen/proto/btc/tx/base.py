@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -14,9 +14,14 @@ proto.btc.tx.base: Bitcoin base transaction class
 
 from collections import namedtuple
 
-from ....tx import base as TxBase
-from ....obj import MMGenList, HexStr
+from ....tx.base import Base as TxBase
+from ....obj import MMGenList, HexStr, ListItemAttr
 from ....util import msg, make_chksum_6, die, pp_fmt
+
+from .op_return_data import OpReturnData
+
+def data2scriptPubKey(data):
+	return '6a' + '{:02x}'.format(len(data)) + data.hex() # OP_RETURN data
 
 def addr2scriptPubKey(proto, addr):
 
@@ -31,15 +36,45 @@ def addr2scriptPubKey(proto, addr):
 		'bech32': proto.witness_vernum_hex + '14' + decode_addr(proto, addr)
 	}[addr.addr_fmt]
 
-def scriptPubKey2addr(proto, s):
-	if len(s) == 50 and s[:6] == '76a914' and s[-4:] == '88ac':
-		return proto.pubhash2addr(bytes.fromhex(s[6:-4]), 'p2pkh'), 'p2pkh'
-	elif len(s) == 46 and s[:4] == 'a914' and s[-2:] == '87':
-		return proto.pubhash2addr(bytes.fromhex(s[4:-2]), 'p2sh'), 'p2sh'
-	elif len(s) == 44 and s[:4] == proto.witness_vernum_hex + '14':
-		return proto.pubhash2bech32addr(bytes.fromhex(s[4:])), 'bech32'
-	else:
-		raise NotImplementedError(f'Unknown scriptPubKey ({s})')
+def decodeScriptPubKey(proto, s):
+	# src/wallet/rpc/addresses.cpp:
+	#   types: nonstandard, pubkey, pubkeyhash, scripthash, multisig, nulldata, witness_v0_keyhash
+	ret = namedtuple('decoded_scriptPubKey', ['type', 'addr_fmt', 'addr', 'data'])
+
+	match len(s):
+		case 50 if s.startswith('76a914') and s.endswith('88ac'):
+			return ret('pubkeyhash', 'p2pkh', proto.pubhash2addr(bytes.fromhex(s[6:-4]), 'p2pkh'), None)
+		case 46 if s.startswith('a914') and s.endswith('87'):
+			return ret('scripthash', 'p2sh', proto.pubhash2addr(bytes.fromhex(s[4:-2]), 'p2sh'), None)
+		case 44 if s.startswith(proto.witness_vernum_hex + '14'):
+			return ret(
+				'witness_v0_keyhash',
+				'bech32',
+				proto.pubhash2bech32addr(bytes.fromhex(s[4:])),
+				None)
+		case 2 if s.startswith('6a'): # bare OP_RETURN
+			return ret('nulldata', None, None, '')
+		case x if s.startswith('6a'): # OP_RETURN with data
+			# skip opcode byte + push byte(s): https://en.bitcoin.it/wiki/Script
+			match int(s[2:4], 16):
+				case y if 0 < y < 76:
+					skip = 2
+				case 76:
+					skip = 3
+				case 77:
+					skip = 4
+				case 78:
+					skip = 6
+				case y:
+					raise ValueError(f'{y}: invalid first push byte in OP_RETURN data')
+			if 1 <= (x >> 1) - skip <= proto.max_op_return_data_len:
+				return ret('nulldata', None, None, s[skip * 2:]) # return data in hex format
+			else:
+				raise ValueError('{}: OP_RETURN data bytes length not in range 1-{}'.format(
+					(x >> 1) - skip,
+					proto.max_op_return_data_len))
+		case _:
+			raise NotImplementedError(f'Unrecognized scriptPubKey ({s})')
 
 def DeserializeTX(proto, txhex):
 	"""
@@ -53,7 +88,7 @@ def DeserializeTX(proto, txhex):
 	def bytes2coin_amt(bytes_le):
 		return proto.coin_amt(bytes2int(bytes_le), from_unit='satoshi')
 
-	def bshift(n, skip=False, sub_null=False):
+	def bshift(n, *, skip=False, sub_null=False):
 		nonlocal idx, raw_tx
 		ret = tx[idx:idx+n]
 		idx += n
@@ -65,7 +100,7 @@ def DeserializeTX(proto, txhex):
 
 	# https://bitcoin.org/en/developer-reference#compactsize-unsigned-integers
 	# For example, the number 515 is encoded as 0xfd0302.
-	def readVInt(skip=False):
+	def readVInt(*, skip=False):
 		nonlocal idx, raw_tx
 		s = tx[idx]
 		idx += 1
@@ -119,7 +154,7 @@ def DeserializeTX(proto, txhex):
 	} for i in range(d['num_txouts'])])
 
 	for o in d['txouts']:
-		o['address'] = scriptPubKey2addr(proto, o['scriptPubKey'])[0]
+		o.update(decodeScriptPubKey(proto, o['scriptPubKey'])._asdict())
 
 	if has_witness:
 		# https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki
@@ -147,12 +182,15 @@ def DeserializeTX(proto, txhex):
 
 	return namedtuple('deserialized_tx', list(d.keys()))(**d)
 
-class Base(TxBase.Base):
+class Base(TxBase):
 	rel_fee_desc = 'satoshis per byte'
 	rel_fee_disp = 'sat/byte'
 	_deserialized = None
 
-	class InputList(TxBase.Base.InputList):
+	class Output(TxBase.Output): # output contains either addr or data, but not both
+		data = ListItemAttr(OpReturnData, include_proto=True) # type None in parent cls
+
+	class InputList(TxBase.InputList):
 
 		# Lexicographical Indexing of Transaction Inputs and Outputs
 		# https://github.com/bitcoin/bips/blob/master/bip-0069.mediawiki
@@ -163,13 +201,15 @@ class Base(TxBase.Base):
 					+ int.to_bytes(a.vout, 4, 'big'))
 			self.sort(key=sort_func)
 
-	class OutputList(TxBase.Base.OutputList):
+	class OutputList(TxBase.OutputList):
 
 		def sort_bip69(self):
 			def sort_func(a):
 				return (
 					int.to_bytes(a.amt.to_unit('satoshi'), 8, 'big')
-					+ bytes.fromhex(addr2scriptPubKey(self.parent.proto, a.addr)))
+					+ bytes.fromhex(
+						addr2scriptPubKey(self.parent.proto, a.addr) if a.addr else
+						data2scriptPubKey(a.data)))
 			self.sort(key=sort_func)
 
 	def has_segwit_inputs(self):
@@ -205,8 +245,7 @@ class Base(TxBase.Base):
 				'L': isize_common + sig_size + pubkey_size_uncompressed, # = 180
 				'C': isize_common + sig_size + pubkey_size_compressed,   # = 148
 				'S': isize_common + 23,                                  # = 64
-				'B': isize_common + 0                                    # = 41
-			}
+				'B': isize_common + 0}                                   # = 41
 			ret = sum(input_size[i.mmtype] for i in self.inputs if i.mmtype)
 
 			# We have no way of knowing whether a non-MMGen P2PKH addr is compressed or uncompressed
@@ -215,9 +254,18 @@ class Base(TxBase.Base):
 			return ret + sum(input_size['C'] for i in self.inputs if not i.mmtype)
 
 		def get_outputs_size():
-			# output bytes = amt: 8, byte_count: 1+, pk_script
-			# pk_script bytes: p2pkh: 25, p2sh: 23, bech32: 22
-			return sum({'p2pkh':34, 'p2sh':32, 'bech32':31}[o.addr.addr_fmt] for o in self.outputs)
+			# output bytes:
+			#   8 (amt) + scriptlen_byte + script_bytes
+			#   script_bytes:
+			#     ADDR: p2pkh: 25, p2sh: 23, bech32: 22
+			#     DATA: opcode_byte ('6a') + push_byte + nulldata_bytes
+			return sum(
+				{'p2pkh':34, 'p2sh':32, 'bech32':31}[o.addr.addr_fmt] if o.addr else
+				(11 + len(o.data)) if o.data else
+				# guess value if o.addr is missing (probably a vault address):
+				34 if self.proto.coin == 'BCH' else
+				31
+					for o in self.outputs)
 
 		# https://github.com/bitcoin/bips/blob/master/bip-0141.mediawiki
 		# The witness is a serialization of all witness data of the transaction. Each txin is
@@ -255,11 +303,33 @@ class Base(TxBase.Base):
 		return int(ret * (self.cfg.vsize_adj or 1))
 
 	# convert absolute CoinAmt fee to sat/byte for display using estimated size
-	def fee_abs2rel(self, abs_fee, to_unit='satoshi'):
+	def fee_abs2rel(self, abs_fee, *, to_unit='satoshi'):
 		return str(int(
 			abs_fee /
 			getattr(self.proto.coin_amt, to_unit) /
 			self.estimate_size()))
+
+	@property
+	def data_output(self):
+		res = self.data_outputs
+		if len(res) > 1:
+			raise ValueError(f'{res}: too many data outputs in transaction (only one allowed)')
+		return res[0] if len(res) == 1 else None
+
+	@data_output.setter
+	def data_output(self, val):
+		dbool = [bool(o.data) for o in self.outputs]
+		if dbool.count(True) != 1:
+			raise ValueError('more or less than one data output in transaction!')
+		self.outputs[dbool.index(True)] = val
+
+	@property
+	def data_outputs(self):
+		return [o for o in self.outputs if o.data]
+
+	@property
+	def nondata_outputs(self):
+		return [o for o in self.outputs if not o.data]
 
 	@property
 	def deserialized(self):
@@ -317,8 +387,8 @@ class Base(TxBase.Base):
 
 		check_equal(
 			'outputs',
-			sorted((o['address'], o['amt']) for o in dtx.txouts),
-			sorted((o.addr, o.amt) for o in self.outputs))
+			sorted((o['addr'] or o['data'], o['amt']) for o in dtx.txouts),
+			sorted((o.addr or o.data.hex(), o.amt) for o in self.outputs))
 
 		if str(self.txid) != make_chksum_6(bytes.fromhex(dtx.unsigned_hex)).upper():
 			do_error(f'MMGen TxID ({self.txid}) does not match serialized transaction data!')

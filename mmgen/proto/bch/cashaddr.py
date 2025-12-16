@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -33,7 +33,7 @@ cashaddr_addr_types = {
 	'token_script': 3,
 	'unknown':      15,
 }
-addr_types_rev = {v:k for k, v in cashaddr_addr_types.items()}
+addr_types_rev = {v: k for k, v in cashaddr_addr_types.items()}
 
 data_sizes = (160, 192, 224, 256, 320, 384, 448, 512)
 
@@ -51,8 +51,8 @@ def PolyMod(v):
 
 def parse_ver_byte(ver):
 	assert not (ver >> 7), 'invalid version byte: most-significant bit must be zero'
-	t = namedtuple('parsed_version_byte', ['addr_type', 'bitlen'])
-	return t(addr_types_rev[ver >> 3], data_sizes[ver & 7])
+	return namedtuple('parsed_version_byte', ['addr_type', 'bitlen'])(
+		addr_types_rev[ver >> 3], data_sizes[ver & 7])
 
 def make_ver_byte(addr_type, bitlen):
 	assert addr_type in addr_types_rev, f'{addr_type}: invalid addr type'
@@ -66,14 +66,13 @@ def make_polymod_vec(pfx, payload_vec):
 	return ([ord(c) & 31  for c in pfx] + [0] + payload_vec)
 
 def cashaddr_parse_addr(addr):
-	t = namedtuple('parsed_cashaddr', ['pfx', 'payload'])
-	return t(*addr.split(':', 1))
+	return namedtuple('parsed_cashaddr', ['pfx', 'payload'])(*addr.split(':', 1))
 
 def cashaddr_encode_addr(addr_type, size, pfx, data):
 	t = namedtuple('encoded_cashaddr', ['addr', 'pfx', 'payload'])
 	payload_bin = (
 		'{:08b}'.format(make_ver_byte(addr_type, size * 8)) +
-		'{:0{w}b}'.format(int.from_bytes(data), w=len(data) * 8)
+		'{:0{w}b}'.format(int.from_bytes(data, 'big'), w=len(data) * 8)
 	)
 	payload_vec = bin2vec(payload_bin + '0' * (-len(payload_bin) % 5))
 	chksum_vec = bin2vec('{:040b}'.format(PolyMod(make_polymod_vec(pfx, payload_vec + [0] * 8))))
@@ -86,8 +85,8 @@ def cashaddr_decode_addr(addr):
 	data_bin = ''.join(f'{b32a.index(c):05b}' for c in a.payload)
 	vi = parse_ver_byte(int(data_bin[:8], 2))
 	assert len(data_bin) >= vi.bitlen + 48, 'cashaddr data length too short!'
-	data    = int(data_bin[8:8+vi.bitlen], 2).to_bytes(vi.bitlen // 8)
-	chksum  = int(data_bin[-40:], 2).to_bytes(5)
+	data    = int(data_bin[8:8+vi.bitlen], 2).to_bytes(vi.bitlen // 8, 'big')
+	chksum  = int(data_bin[-40:], 2).to_bytes(5, 'big')
 	pad_bin = data_bin[8+vi.bitlen:-40]
 	assert not pad_bin or pad_bin in '0000', f'{pad_bin}: invalid cashaddr data'
 	if chksum_chk := PolyMod(make_polymod_vec(a.pfx, [b32a.index(c) for c in a.payload])) != 0:

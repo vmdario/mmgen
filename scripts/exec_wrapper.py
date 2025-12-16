@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -19,8 +19,8 @@ scripts/exec_wrapper.py: wrapper to launch MMGen scripts in a testing environmen
 def exec_wrapper_get_colors():
 	from collections import namedtuple
 	return namedtuple('colors', ['red', 'green', 'yellow', 'blue', 'purple'])(*[
-			(lambda s:s) if exec_wrapper_os.getenv('MMGEN_DISABLE_COLOR') else
-			(lambda s, n=n:f'\033[{n};1m{s}\033[0m')
+			(lambda s: s) if exec_wrapper_os.getenv('MMGEN_DISABLE_COLOR') else
+			(lambda s, n=n: f'\033[{n};1m{s}\033[0m')
 		for n in (31, 32, 33, 34, 35)])
 
 def exec_wrapper_init():
@@ -123,6 +123,15 @@ def exec_wrapper_tracemalloc_log():
 			s = sum(stat.size for stat in stats) / 1024,
 			w = col1w))
 
+def exec_wrapper_do_exit(e, exit_val):
+	if exit_val != 0:
+		exec_wrapper_write_traceback(e, exit_val)
+	else:
+		if exec_wrapper_os.getenv('MMGEN_TRACEMALLOC'):
+			exec_wrapper_tracemalloc_log()
+		exec_wrapper_end_msg()
+	exec_wrapper_sys.exit(exit_val)
+
 import sys as exec_wrapper_sys
 import os as exec_wrapper_os
 import time as exec_wrapper_time
@@ -145,17 +154,10 @@ try:
 	with open(exec_wrapper_execed_file) as fp:
 		exec(fp.read())
 except SystemExit as e:
-	if e.code != 0:
-		exec_wrapper_write_traceback(e, e.code)
-	else:
-		if exec_wrapper_os.getenv('MMGEN_TRACEMALLOC'):
-			exec_wrapper_tracemalloc_log()
-		exec_wrapper_end_msg()
-	exec_wrapper_sys.exit(e.code)
+	exec_wrapper_do_exit(e, e.code)
 except Exception as e:
-	exit_val = e.mmcode if hasattr(e, 'mmcode') else e.code if hasattr(e, 'code') else 1
-	exec_wrapper_write_traceback(e, exit_val)
-	exec_wrapper_sys.exit(exit_val)
+	exec_wrapper_do_exit(
+		e, e.mmcode if hasattr(e, 'mmcode') else e.code if hasattr(e, 'code') else 1)
 
 if exec_wrapper_os.getenv('MMGEN_TRACEMALLOC'):
 	exec_wrapper_tracemalloc_log()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -66,125 +66,9 @@ Use ‘mmgen-tool eth_checksummed_addr’ to create it if necessary.
 	}
 }
 
-# ERC Token Standard #20 Interface
-# https://github.com/ethereum/EIPs/blob/master/EIPS/eip-20-token-standard.md
-
-solidity_code_template = """
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-pragma solidity %s;
-
-contract SafeMath {
-    function safeAdd(uint a, uint b) public pure returns (uint c) {
-        c = a + b;
-        require(c >= a);
-    }
-    function safeSub(uint a, uint b) public pure returns (uint c) {
-        require(b <= a);
-        c = a - b;
-    }
-    function safeMul(uint a, uint b) public pure returns (uint c) {
-        c = a * b;
-        require(a == 0 || c / a == b);
-    }
-    function safeDiv(uint a, uint b) public pure returns (uint c) {
-        require(b > 0);
-        c = a / b;
-    }
-}
-
-abstract contract ERC20Interface {
-    function totalSupply() public virtual returns (uint);
-    function balanceOf(address tokenOwner) public virtual returns (uint balance);
-    function allowance(address tokenOwner, address spender) public virtual returns (uint remaining);
-    function transfer(address to, uint tokens) public virtual returns (bool success);
-    function approve(address spender, uint tokens) public virtual returns (bool success);
-    function transferFrom(address from, address to, uint tokens) public virtual returns (bool success);
-
-    event Transfer(address indexed from, address indexed to, uint tokens);
-    event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
-}
-
-contract Owned {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed _from, address indexed _to);
-
-    constructor() {
-        owner = msg.sender;
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner);
-        _;
-    }
-
-    function transferOwnership(address _newOwner) public onlyOwner {
-        newOwner = _newOwner;
-    }
-    function acceptOwnership() public {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-// ----------------------------------------------------------------------------
-// ERC20 Token, with the addition of symbol, name and decimals and assisted
-// token transfers
-// ----------------------------------------------------------------------------
-contract Token is ERC20Interface, Owned, SafeMath {
-    string public symbol;
-    string public  name;
-    uint8 public decimals;
-    uint public _totalSupply;
-
-    mapping(address => uint) balances;
-    mapping(address => mapping(address => uint)) allowed;
-
-    constructor() {
-        symbol = "$symbol";
-        name = "$name";
-        decimals = $decimals;
-        _totalSupply = $supply;
-        balances[$owner_addr] = _totalSupply;
-        emit Transfer(address(0), $owner_addr, _totalSupply);
-    }
-    function totalSupply() public view override returns (uint) {
-        return _totalSupply  - balances[address(0)];
-    }
-    function balanceOf(address tokenOwner) public view override returns (uint balance) {
-        return balances[tokenOwner];
-    }
-    function transfer(address to, uint tokens) public override returns (bool success) {
-        balances[msg.sender] = safeSub(balances[msg.sender], tokens);
-        balances[to] = safeAdd(balances[to], tokens);
-        emit Transfer(msg.sender, to, tokens);
-        return true;
-    }
-    function approve(address spender, uint tokens) public override returns (bool success) {
-        allowed[msg.sender][spender] = tokens;
-        emit Approval(msg.sender, spender, tokens);
-        return true;
-    }
-    function transferFrom(address from, address to, uint tokens) public override returns (bool success) {
-        balances[from] = safeSub(balances[from], tokens);
-        allowed[from][msg.sender] = safeSub(allowed[from][msg.sender], tokens);
-        balances[to] = safeAdd(balances[to], tokens);
-        emit Transfer(from, to, tokens);
-        return true;
-    }
-    function allowance(address tokenOwner, address spender) public view override returns (uint remaining) {
-        return allowed[tokenOwner][spender];
-    }
-    // Owner can transfer out any accidentally sent ERC20 tokens
-    function transferAnyERC20Token(address tokenAddress, uint tokens) public onlyOwner returns (bool success) {
-        return ERC20Interface(tokenAddress).transfer(owner, tokens);
-    }
-}
-""" % req_solc_ver_pat
+import os
+with open(os.path.join(os.path.dirname(__file__), 'ERC20.sol.in')) as fh:
+	solidity_code_template = fh.read()
 
 def create_src(cfg, template, token_data):
 
@@ -209,14 +93,14 @@ def create_src(cfg, template, token_data):
 			yield (k, field.conversion(val))
 
 	from string import Template
-	return Template(template).substitute(**dict(gen()))
+	return Template(template).substitute(**(dict(gen()) | {'solc_ver_pat': req_solc_ver_pat}))
 
 def check_solc_version():
 	"""
 	The output is used by other programs, so write to stdout only
 	"""
 	try:
-		cp = run(['solc', '--version'], check=True, stdout=PIPE)
+		cp = run(['solc', '--version'], check=True, text=True, stdout=PIPE)
 	except:
 		msg('solc missing or could not be executed') # this must go to stderr
 		return False
@@ -225,7 +109,7 @@ def check_solc_version():
 		Msg('solc exited with error')
 		return False
 
-	line = cp.stdout.decode().splitlines()[1]
+	line = cp.stdout.splitlines()[1]
 	version_str = re.sub(r'Version:\s*', '', line)
 	m = re.match(r'(\d+)\.(\d+)\.(\d+)', version_str)
 
@@ -261,7 +145,7 @@ def compile_code(cfg, code):
 		msg(err)
 	if cfg.stdout:
 		o = out.split('\n')
-		return {k:o[i+2] for k in ('SafeMath', 'Owned', 'Token') for i in range(len(o)) if k in o[i]}
+		return {k: o[i+2] for k in ('SafeMath', 'Owned', 'Token') for i in range(len(o)) if k in o[i]}
 	else:
 		cfg._util.vmsg(out)
 

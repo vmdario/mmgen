@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -223,8 +223,7 @@ class MnemonicEntry:
 			ignored.  This feature allows you to guard against acoustic side-channel
 			attacks by padding your keyboard entry with “dead characters”.  Pad char-
 			acters may be typed before, after, or in the middle of words.
-		""",
-	}
+		"""}
 	word_prompt = ('Enter word #{}: ', 'Incorrect entry. Repeat word #{}: ')
 	usr_dfl_entry_mode = None
 	_lw = None
@@ -261,7 +260,7 @@ class MnemonicEntry:
 			self._usl = usl
 		return self._usl
 
-	def idx(self, w, entry_mode, lo_idx=None, hi_idx=None):
+	def idx(self, w, entry_mode, *, lo_idx=None, hi_idx=None):
 		"""
 		Return values:
 		  - all modes:
@@ -306,7 +305,7 @@ class MnemonicEntry:
 			msg('  {}) {:8} {}'.format(
 				n,
 				mode.name + ':',
-				fmt(mode.choose_info, ' '*14).lstrip().format(usl=self.uniq_ss_len),
+				fmt(mode.choose_info, indent=' '*14).lstrip().format(usl=self.uniq_ss_len),
 			))
 		prompt = f'Type a number, or hit ENTER for the default ({capfirst(self.dfl_entry_mode)}): '
 		erase = '\r' + ' ' * (len(prompt)+19) + '\r'
@@ -323,7 +322,7 @@ class MnemonicEntry:
 				time.sleep(self.cfg.err_disp_timeout)
 				msg_r(erase)
 
-	def get_mnemonic_from_user(self, mn_len, validate=True):
+	def get_mnemonic_from_user(self, mn_len, *, validate=True):
 		mll = list(self.bconv.seedlen_map_rev)
 		assert mn_len in mll, f'{mn_len}: invalid mnemonic length (must be one of {mll})'
 
@@ -373,8 +372,7 @@ class MnemonicEntry:
 		d = {
 			'mmgen': MnemonicEntryMMGen,
 			'bip39': MnemonicEntryBIP39,
-			'xmrseed': MnemonicEntryMonero,
-		}
+			'xmrseed': MnemonicEntryMonero}
 		wl = wl.lower()
 		if wl not in d:
 			raise ValueError(f'wordlist {wl!r} not recognized (valid choices: {fmt_list(list(d))})')
@@ -418,7 +416,7 @@ class MnemonicEntryMonero(MnemonicEntry):
 	dfl_entry_mode = 'short'
 	has_chksum = True
 
-def mn_entry(cfg, wl_id, entry_mode=None):
+def mn_entry(cfg, wl_id, *, entry_mode=None):
 	if wl_id == 'words':
 		wl_id = 'mmgen'
 	me = MnemonicEntry.get_cls_by_wordlist(wl_id)(cfg)

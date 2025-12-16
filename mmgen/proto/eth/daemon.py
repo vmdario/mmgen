@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -64,8 +64,7 @@ class openethereum_daemon(ethereum_daemon):
 	datadirs = {
 		'linux': [gc.home_dir, '.local', 'share', 'io.parity.ethereum'],
 		'darwin': [gc.home_dir, 'Library', 'Application Support', 'io.parity.ethereum'],
-		'win32': [os.getenv('LOCALAPPDATA'), 'Parity', 'Ethereum']
-	}
+		'win32': [os.getenv('LOCALAPPDATA'), 'Parity', 'Ethereum']}
 
 	def init_subclass(self):
 
@@ -93,11 +92,11 @@ class parity_daemon(openethereum_daemon):
 	exec_fn = 'parity'
 
 class geth_daemon(ethereum_daemon):
-	# upgrade to 1.14.0/1.14.6 fails:
+	# v1.14.0 -> ? (v1.15.11 and later OK)
 	#   mempool deadlock in dev mode: "transaction indexing is in progress"
 	#   https://github.com/ethereum/go-ethereum/issues/29475
 	#   offending commit (via git bisect): 0a2f33946b95989e8ce36e72a88138adceab6a23
-	daemon_data = _dd('Geth', 1013015, '1.13.15')
+	daemon_data = _dd('Geth', 1016007, '1.16.7')
 	version_pat = r'Geth/v(\d+)\.(\d+)\.(\d+)'
 	exec_fn = 'geth'
 	use_pidfile = False
@@ -107,31 +106,36 @@ class geth_daemon(ethereum_daemon):
 	datadirs = {
 		'linux': [gc.home_dir, '.ethereum', 'geth'],
 		'darwin': [gc.home_dir, 'Library', 'Ethereum', 'geth'],
-		'win32': [os.getenv('LOCALAPPDATA'), 'Geth'] # FIXME
-	}
+		'win32': [os.getenv('LOCALAPPDATA'), 'Geth']} # FIXME
 
 	def init_subclass(self):
 
-		def have_authrpc():
-			from subprocess import run, PIPE
-			try:
-				return b'authrpc' in run(['geth', 'help'], check=True, stdout=PIPE).stdout
-			except:
-				return False
-
 		self.coind_args = list_gen(
-			['--verbosity=0'],
+			['node', self.id == 'reth'],
+			['--quiet', self.id == 'reth'],
+			['--disable-dns-discovery', self.id == 'reth' and self.test_suite],
+			['--verbosity=0', self.id == 'geth'],
 			['--ipcdisable'], # IPC-RPC: if path to socket is longer than 108 chars, geth fails to start
 			['--http'],
 			['--http.api=eth,web3,txpool'],
 			[f'--http.port={self.rpc_port}'],
-			[f'--authrpc.port={self.authrpc_port}', have_authrpc()],
+			[f'--authrpc.port={self.authrpc_port}'],
 			[f'--port={self.p2p_port}', self.p2p_port], # geth binds p2p port even with --maxpeers=0
-			['--maxpeers=0', not self.opt.online],
+			[f'--discovery.port={self.p2p_port}', self.id == 'reth' and self.p2p_port],
+			['--maxpeers=0', self.id == 'geth' and not self.opt.online],
 			[f'--datadir={self.datadir}', self.non_dfl_datadir],
-			['--goerli', self.network=='testnet'],
+			['--holesky', self.network=='testnet' and self.id == 'geth'],
+			['--chain=holesky', self.network=='testnet' and self.id == 'reth'],
 			['--dev', self.network=='regtest'],
 		)
+
+class reth_daemon(geth_daemon):
+	daemon_data = _dd('Reth', 1009003, '1.9.3')
+	version_pat = r'reth/v(\d+)\.(\d+)\.(\d+)'
+	exec_fn = 'reth'
+	version_info_arg = '--version'
+	datadirs = {
+		'linux': [gc.home_dir, '.local', 'share', 'reth']}
 
 # https://github.com/ledgerwatch/erigon
 class erigon_daemon(geth_daemon):
@@ -143,8 +147,7 @@ class erigon_daemon(geth_daemon):
 	version_info_arg = '--version'
 	datadirs = {
 		'linux': [gc.home_dir, '.local', 'share', 'erigon'],
-		'win32': [os.getenv('LOCALAPPDATA'), 'Erigon'] # FIXME
-	}
+		'win32': [os.getenv('LOCALAPPDATA'), 'Erigon']} # FIXME
 
 	def init_subclass(self):
 
@@ -171,12 +174,12 @@ class erigon_daemon(geth_daemon):
 			test_suite   = self.test_suite,
 			datadir      = self.datadir)
 
-	def start(self, quiet=False, silent=False):
+	def start(self, *, quiet=False, silent=False):
 		super().start(quiet=quiet, silent=silent)
 		self.rpc_d.debug = self.debug
 		return self.rpc_d.start(quiet=quiet, silent=silent)
 
-	def stop(self, quiet=False, silent=False):
+	def stop(self, *, quiet=False, silent=False):
 		self.rpc_d.debug = self.debug
 		self.rpc_d.stop(quiet=quiet, silent=silent)
 		return super().stop(quiet=quiet, silent=silent)
@@ -188,12 +191,12 @@ class erigon_daemon(geth_daemon):
 class erigon_rpcdaemon(RPCDaemon):
 
 	master_daemon = 'erigon_daemon'
-	rpc_type = 'Erigon'
+	rpc_desc = 'Erigon'
 	exec_fn = 'rpcdaemon'
 	use_pidfile = False
 	use_threads = True
 
-	def __init__(self, cfg, proto, rpc_port, private_port, test_suite, datadir):
+	def __init__(self, cfg, proto, *, rpc_port, private_port, test_suite, datadir):
 
 		self.proto = proto
 		self.test_suite = test_suite

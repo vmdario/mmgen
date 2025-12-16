@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,9 +21,11 @@ proto.btc.regtest: Coin daemon regression test mode setup and operations
 """
 
 import os, shutil, json
-from ...util import msg, gmsg, die, capfirst, suf
+from ...util import msg, gmsg, die, capfirst, suf, isAsync
+from ...util2 import cliargs_convert
 from ...protocol import init_proto
-from ...rpc import rpc_init, json_encoder
+from ...rpc import rpc_init
+from ...rpc.util import json_encoder
 from ...objmethods import MMGenObject
 from ...daemon import CoinDaemon
 
@@ -45,16 +47,6 @@ def create_data_dir(cfg, data_dir):
 		os.makedirs(data_dir)
 	except:
 		pass
-
-def cliargs_convert(args):
-	def gen():
-		for arg in args:
-			try:
-				yield json.loads(arg) # list, dict, bool, int, null
-			except:
-				yield arg # arbitrary string
-
-	return tuple(gen())
 
 class MMGenRegtest(MMGenObject):
 
@@ -79,22 +71,21 @@ class MMGenRegtest(MMGenObject):
 		# cTyMdQ2BgfAsjopRVZrj7AoEGp97pKfrC2NkqLuwHr4KHfPNAKwp hdseed=1
 		'btc': 'bcrt1qaq8t3pakcftpk095tnqfv5cmmczysls024atnd',
 		'ltc': 'rltc1qaq8t3pakcftpk095tnqfv5cmmczysls05c8zyn',
-		'bch': 'n2fxhNx27GhHAWQhyuZ5REcBNrJqCJsJ12',
-	}
+		'bch': 'n2fxhNx27GhHAWQhyuZ5REcBNrJqCJsJ12'}
 
-	def __init__(self, cfg, coin, bdb_wallet=False):
+	def __init__(self, cfg, coin, *, bdb_wallet=False):
 		self.cfg = cfg
 		self.coin = coin.lower()
-		self.bdb_wallet = bdb_wallet
+		self.bdb_wallet = bdb_wallet and self.coin != 'btc'
 
 		assert self.coin in self.coins, f'{coin!r}: invalid coin for regtest'
 
 		self.proto = init_proto(cfg, self.coin, regtest=True, need_amt=True)
 		self.d = CoinDaemon(
 			cfg,
-			self.coin + '_rt',
+			network_id = self.coin + '_rt',
 			test_suite = cfg.test_suite,
-			opts       = ['bdb_wallet'] if bdb_wallet else None)
+			opts       = ['bdb_wallet'] if self.bdb_wallet else None)
 
 	# Caching creates problems (broken pipe) when recreating + loading wallets,
 	# so reinstantiate with every call:
@@ -113,9 +104,7 @@ class MMGenRegtest(MMGenObject):
 	@property
 	async def miner_wif(self):
 		if not hasattr(self, '_miner_wif'):
-			self._miner_wif = (
-				self.bdb_miner_wif if self.bdb_wallet else
-				await self.rpc_call('dumpprivkey', (await self.miner_addr), wallet='miner'))
+			self._miner_wif = self.bdb_miner_wif if self.bdb_wallet else None
 		return self._miner_wif
 
 	def create_hdseed_wif(self):
@@ -125,7 +114,7 @@ class MMGenRegtest(MMGenObject):
 		t.addrtype = 'compressed' if self.proto.coin == 'BCH' else 'bech32'
 		return t.hex2wif(self.bdb_hdseed)
 
-	async def generate(self, blocks=1, silent=False):
+	async def generate(self, blocks=1, *, silent=False):
 
 		blocks = int(blocks)
 
@@ -203,11 +192,11 @@ class MMGenRegtest(MMGenObject):
 			msg('Stopping regtest daemon')
 			await self.rpc_call('stop')
 
-	def init_daemon(self, reindex=False):
+	def init_daemon(self, *, reindex=False):
 		if reindex:
 			self.d.usr_coind_args.append('--reindex')
 
-	async def start_daemon(self, reindex=False, silent=True):
+	async def start_daemon(self, *, reindex=False, silent=True):
 		self.init_daemon(reindex=reindex)
 		self.d.start(silent=silent)
 		for user in ('miner', 'bob', 'alice'):
@@ -264,12 +253,12 @@ class MMGenRegtest(MMGenObject):
 		print(ret if isinstance(ret, str) else json.dumps(ret, cls=json_encoder, indent=4))
 
 	async def cmd(self, args):
-		ret = getattr(self, args[0])(*args[1:])
-		return (await ret) if type(ret).__name__ == 'coroutine' else ret
+		func = getattr(self, args[0])
+		return await func(*args[1:]) if isAsync(func) else func(*args[1:])
 
 	async def fork(self, coin): # currently disabled
 
-		proto = init_proto(self.cfg, coin, False)
+		proto = init_proto(self.cfg, coin, testnet=False)
 		if not [f for f in proto.forks if f[2] == proto.coin.lower() and f[3] is True]:
 			die(1, f'Coin {proto.coin} is not a replayable fork of coin {coin}')
 

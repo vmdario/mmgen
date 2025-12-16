@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -26,8 +26,8 @@ from collections import namedtuple
 from ..cfg import gv
 from ..objmethods import MMGenObject
 from ..obj import get_obj, MMGenIdx, MMGenList
-from ..color import nocolor, yellow, green, red, blue
-from ..util import msg, msg_r, fmt, die, capfirst, make_timestr
+from ..color import nocolor, yellow, orange, green, red, blue
+from ..util import msg, msg_r, fmt, die, capfirst, suf, make_timestr, isAsync, is_int
 from ..rpc import rpc_init
 from ..base_obj import AsyncInit
 
@@ -80,17 +80,27 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			def do(method, data, cw, fs, color, fmt_method):
 				return [l.rstrip() for l in method(data, cw, fs, color, fmt_method)]
 
+	is_account_based = False
+	has_age     = False
+	has_used    = False
 	has_wallet  = True
 	has_amt2    = False
 	dates_set   = False
 	reverse     = False
 	group       = False
+	groupable   = {}
 	use_cached  = False
-	txid_w      = 64
+	minconf     = 1
+	txid_w      = 0
+	txid_max_w  = {}
+	txid_min_w  = {}
+	txid_nice_w = {}
+	nice_addr_w = {'addr': 14}
 	sort_key    = 'age'
 	display_hdr = ()
 	display_body = ()
 	prompt_fs_repl = {}
+	removed_key_mappings = {}
 	nodata_msg = '[no data for requested parameters]'
 	cols = 0
 	term_height = 0
@@ -101,6 +111,7 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 	pos = 0
 	filters = ()
 
+	column_widths_data = namedtuple('twview_column_widths', ['widths', 'maxws', 'minws', 'maxws_nice'])
 	fp = namedtuple('fs_params', ['fs_key', 'hdr_fs_repl', 'fs_repl', 'hdr_fs', 'fs'])
 	fs_params = {
 		'num':       fp('n', True, True,  ' {n:>%s}', ' {n:>%s}'),
@@ -112,12 +123,12 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 		'comment':   fp('c', True, False, ' {c:%s}',  ' {c}'),
 		'amt':       fp('A', True, False, ' {A:%s}',  ' {A}'),
 		'amt2':      fp('B', True, False, ' {B:%s}',  ' {B}'),
+		'addr_idx':  fp('I', True, False, ' {I:%s}',  ' {I}'),
 		'date':      fp('d', True, True,  ' {d:%s}',  ' {d:<%s}'),
 		'date_time': fp('D', True, True,  ' {D:%s}',  ' {D:%s}'),
 		'block':     fp('b', True, True,  ' {b:%s}',  ' {b:<%s}'),
 		'inputs':    fp('i', True, False, ' {i:%s}',  ' {i}'),
-		'outputs':   fp('o', True, False, ' {o:%s}',  ' {o}'),
-	}
+		'outputs':   fp('o', True, False, ' {o:%s}',  ' {o}')}
 
 	age_fmts = ('confs', 'block', 'days', 'date', 'date_time')
 	age_fmts_date_dependent = ('days', 'date', 'date_time')
@@ -126,12 +137,11 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 	bch_addr_fmts = ('cashaddr', 'legacy')
 
 	age_col_params = {
-		'confs':     (7,  'Confs'),
-		'block':     (8,  'Block'),
-		'days':      (6,  'Age(d)'),
-		'date':      (8,  'Date'),
-		'date_time': (16, 'Date/Time'),
-	}
+		'confs':     (0, 'Confs'),
+		'block':     (0, 'Block'),
+		'days':      (0, 'Age(d)'),
+		'date':      (0, 'Date'),
+		'date_time': (0, 'Date/Time')}
 
 	date_formatter = {
 		'days': lambda rpc, secs: (rpc.cur_date - secs) // 86400 if secs else 0,
@@ -140,8 +150,7 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 				if secs else '-       '),
 		'date_time': (
 			lambda rpc, secs: '{}-{:02}-{:02} {:02}:{:02}'.format(*time.gmtime(secs)[:5])
-				if secs else '-               '),
-	}
+				if secs else '-               ')}
 
 	twidth_diemsg = """
 		--columns or MMGEN_COLUMNS value ({}) is too small to display the {}
@@ -158,7 +167,6 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 
 	squeezed_format_line = None
 	detail_format_line = None
-
 	scroll_keys = {
 		'vi': {
 			'k': 'm_cursor_up',
@@ -166,26 +174,23 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			'b': 'm_pg_up',
 			'f': 'm_pg_down',
 			'g': 'm_top',
-			'G': 'm_bot',
-		},
+			'G': 'm_bot'},
 		'linux': {
 			'\x1b[A': 'm_cursor_up',
 			'\x1b[B': 'm_cursor_down',
 			'\x1b[5~': 'm_pg_up',
 			'\x1b[6~': 'm_pg_down',
 			'\x1b[7~': 'm_top',
-			'\x1b[8~': 'm_bot',
-		},
+			'\x1b[8~': 'm_bot'},
 		'win32': {
 			'\xe0H': 'm_cursor_up',
 			'\xe0P': 'm_cursor_down',
 			'\xe0I': 'm_pg_up',
 			'\xe0Q': 'm_pg_down',
 			'\xe0G': 'm_top',
-			'\xe0O': 'm_bot',
-		}
-	}
+			'\xe0O': 'm_bot'}}
 	scroll_keys['darwin'] = scroll_keys['linux']
+	extra_key_mappings = {}
 
 	def __new__(cls, cfg, proto, *args, **kwargs):
 		return MMGenObject.__new__(proto.base_proto_subclass(cls, cls.mod_subpath))
@@ -193,14 +198,22 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 	async def __init__(self, cfg, proto):
 		self.cfg = cfg
 		self.proto = proto
-		self.rpc = await rpc_init(cfg, proto)
+		if have_rpc := 'rpc_init' in proto.mmcaps:
+			self.rpc = await rpc_init(cfg, proto)
 		if self.has_wallet:
 			from .ctl import TwCtl
-			self.twctl = await TwCtl(cfg, proto, mode='w')
-		self.amt_keys = {'amt':'iwidth', 'amt2':'iwidth2'} if self.has_amt2 else {'amt':'iwidth'}
-		if repl := self.prompt_fs_repl.get(self.proto.coin):
-			self.prompt_fs_in[repl[0]] = repl[1]
+			self.twctl = await TwCtl(cfg, proto, mode='w', no_rpc=not have_rpc)
+		self.amt_iwidth_keys = {'amt': 'iwidth'} | ({'amt2': 'iwidth2'} if self.has_amt2 else {})
+		if repl_data := self.prompt_fs_repl.get(self.proto.coin):
+			for repl in [repl_data] if isinstance(repl_data[0], int) else repl_data:
+				self.prompt_fs_in[repl[0]] = repl[1]
 		self.prompt_fs = '\n'.join(self.prompt_fs_in)
+		for k, v in self.removed_key_mappings.items():
+			if k in self.key_mappings and self.key_mappings[k] == v:
+				del self.key_mappings[k]
+			else:
+				raise ValueError(f'{k}: {v}: unrecognized or invalid key mapping')
+		self.key_mappings.update(self.extra_key_mappings)
 		if self.proto.coin == 'BCH':
 			self.key_mappings.update({'h': 'd_addr_view_pref'})
 			self.addr_view_pref = 1 if not self.cfg.cashaddr else not self.proto.cashaddr
@@ -224,12 +237,14 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 		self._age_fmt = val
 
 	def age_disp(self, o, age_fmt):
-		if age_fmt == 'confs':
-			return o.confs or '-'
-		elif age_fmt == 'block':
-			return self.rpc.blockcount + 1 - o.confs if o.confs else '-'
-		else:
-			return self.date_formatter[age_fmt](self.rpc, o.date)
+		if self.has_age:
+			match age_fmt:
+				case 'confs':
+					return o.confs or '-'
+				case 'block':
+					return self.rpc.blockcount + 1 - o.confs if o.confs else '-'
+				case _:
+					return self.date_formatter[age_fmt](self.rpc, o.date)
 
 	def get_disp_prec(self, wide):
 		return self.proto.coin_amt.max_prec
@@ -239,36 +254,34 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 		'age':    'Age',
 		'amt':    'Amt',
 		'txid':   'TxID',
-		'twmmid': 'MMGenID',
-	}
+		'twmmid': 'MMGenID'}
 
 	sort_funcs = {
-		'addr':   lambda i: '{} {:010} {:024.12f}'.format(i.addr, 0xffffffff - abs(i.confs), i.amt),
-		'age':    lambda i: '{:010} {:024.12f}'.format(0xffffffff - abs(i.confs), i.amt),
-		'amt':    lambda i: '{:024.12f} {:010} {}'.format(i.amt, 0xffffffff - abs(i.confs), i.addr),
+		'addr':   lambda i: i.addr,
+		'age':    lambda i: 0 - i.confs,
+		'amt':    lambda i: i.amt,
 		'txid':   lambda i: f'{i.txid} {i.vout:04}',
-		'twmmid': lambda i: '{} {:010} {:024.12f}'.format(i.twmmid.sort_key, 0xffffffff - abs(i.confs), i.amt)
-	}
+		'twmmid': lambda i: i.twmmid.sort_key}
 
-	def sort_info(self, include_group=True):
+	def sort_info(self, *, include_group=True):
 		ret = ([], ['Reverse'])[self.reverse]
 		ret.append(self.sort_disp[self.sort_key])
-		if include_group and self.group and (self.sort_key in ('addr', 'txid', 'twmmid')):
+		if include_group and self.group and self.sort_key in self.groupable:
 			ret.append('Grouped')
 		return ret
 
-	def do_sort(self, key=None, reverse=False):
-		key = key or self.sort_key
+	def sort_data(self, key):
+		if key == 'txid' and not self.txid_w:
+			return
 		if key not in self.sort_funcs:
 			die(1, f'{key!r}: invalid sort key.  Valid options: {" ".join(self.sort_funcs)}')
 		self.sort_key = key
-		assert isinstance(reverse, bool)
 		save = self.data.copy()
-		self.data.sort(key=self.sort_funcs[key], reverse=reverse or self.reverse)
+		self.data.sort(key=self.sort_funcs[key], reverse=self.reverse)
 		if self.data != save:
 			self.pos = 0
 
-	async def get_data(self, sort_key=None, reverse_sort=False):
+	async def get_data(self):
 
 		rpc_data = await self.get_rpc_data()
 
@@ -277,20 +290,22 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 
 		lbl_id = ('account', 'label')['label_api' in self.rpc.caps]
 
-		res = self.gen_data(rpc_data, lbl_id)
-		self.data = MMGenList(await res if type(res).__name__ == 'coroutine' else res)
-		self.disp_data = list(self.filter_data())
+		self.data = MMGenList(
+			await self.gen_data(rpc_data, lbl_id) if isAsync(self.gen_data) else
+			self.gen_data(rpc_data, lbl_id))
 
 		if not self.data:
-			die(1, self.no_data_errmsg)
+			die(1, f'No {self.item_desc_pl} in tracking wallet!')
 
-		self.do_sort(key=sort_key, reverse=reverse_sort)
+		self.sort_data(self.sort_key)
+
+		self.disp_data = tuple(self.get_disp_data())
 
 		# get_data() is immediately followed by display header, and get_rpc_data() produces output,
 		# so add NL here (' ' required because CUR_HOME erases preceding blank lines)
 		msg(' ')
 
-	def get_term_dimensions(self, min_cols, min_lines=None):
+	def get_term_dimensions(self, min_cols, *, min_lines=None):
 		from ..term import get_terminal_size, get_char_raw, _term_dimensions
 		user_resized = False
 		while True:
@@ -303,31 +318,35 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 				return _term_dimensions(cols, ts.height)
 			if sys.stdout.isatty():
 				if self.cfg.columns and cols < min_cols:
-					die(1, '\n'+fmt(self.twidth_diemsg.format(self.cfg.columns, self.desc, min_cols), indent='  '))
+					die(1, '\n'+fmt(
+						self.twidth_diemsg.format(self.cfg.columns, self.desc, min_cols),
+						indent = '  '))
 				else:
-					m, dim = (self.twidth_errmsg, min_cols) if cols < min_cols else (self.theight_errmsg, min_lines)
+					m, dim = (
+						(self.twidth_errmsg, min_cols) if cols < min_cols else
+						(self.theight_errmsg, min_lines))
 					get_char_raw(CUR_HOME + ERASE_ALL + fmt(m.format(self.desc, dim), append=''))
 					user_resized = True
 			else:
 				return _term_dimensions(min_cols, ts.height)
 
-	def compute_column_widths(self, widths, maxws, minws, maxws_nice, wide, interactive):
+	def compute_column_widths(self, in_data, *, wide, interactive):
 
 		def do_ret(freews):
-			widths.update({k:minws[k] + freews.get(k, 0) for k in minws})
-			widths.update({ikey: widths[key] - self.disp_prec - 1 for key, ikey in self.amt_keys.items()})
-			return namedtuple('column_widths', widths.keys())(*widths.values())
-
-		def do_ret_max():
-			widths.update({k:max(minws[k], maxws[k]) for k in minws})
-			widths.update({ikey: widths[key] - self.disp_prec - 1 for key, ikey in self.amt_keys.items()})
+			if freews:
+				widths.update({k: minws[k] + freews.get(k, 0) for k in minws})
+			else:
+				widths.update({k: max(minws[k], maxws[k]) for k in minws})
+			widths.update({
+				ikey: widths[key] - self.disp_prec - 1
+					for key, ikey in self.amt_iwidth_keys.items()})
 			return namedtuple('column_widths', widths.keys())(*widths.values())
 
 		def get_freews(cols, varws, varw, minw):
 			freew = cols - minw
 			if freew and varw:
 				x = freew / varw
-				freews = {k:int(varws[k] * x) for k in varws}
+				freews = {k: int(varws[k] * x) for k in varws}
 				remainder = freew - sum(freews.values())
 				for k in varws:
 					if not remainder:
@@ -339,7 +358,8 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			else:
 				return {k:0 for k in varws}
 
-		varws = {k:maxws[k] - minws[k] for k in maxws if maxws[k] > minws[k]}
+		widths, maxws, minws, maxws_nice = in_data
+		varws = {k: maxws[k] - minws[k] for k in maxws if maxws[k] > minws[k]}
 		minw = sum(widths.values()) + sum(minws.values())
 		varw = sum(varws.values())
 
@@ -351,7 +371,7 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 		self.cols = min(self.term_width, minw + varw)
 
 		if wide or self.cols == minw + varw:
-			return do_ret_max()
+			return do_ret(None)
 
 		if maxws_nice:
 			# compute high-priority widths:
@@ -370,12 +390,22 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 				sum(varws_lp.values()),
 				minw + sum(widths_hp.values()))
 			# sum the two for each field:
-			return do_ret({k:widths_hp[k] + widths_lp.get(k, 0) for k in varws})
+			return do_ret({k: widths_hp[k] + widths_lp.get(k, 0) for k in varws})
 		else:
 			return do_ret(get_freews(self.cols, varws, varw, minw))
 
 	def gen_subheader(self, cw, color):
-		return ()
+		c_orange = (nocolor, orange)[color]
+		c_yellow = (nocolor, yellow)[color]
+		if self.rpc.is_remote:
+			yield (
+				c_orange(f'WARNING: Connecting to public {self.rpc.server_proto} node at ') +
+				self.rpc.server_domain.hl(color=color))
+			yield c_orange('         To improve anonymity, proxy requests via Tor or I2P')
+		if self.twctl.use_cached_balances:
+			yield c_yellow('Using cached balances. These may be out of date!')
+		else:
+			yield f'Displaying balances with {self.minconf} confirmation{suf(self.minconf)}'
 
 	def gen_footer(self, color):
 		if hasattr(self, 'total'):
@@ -384,12 +414,14 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 	def set_amt_widths(self, data):
 		# width of amts column: min(7, width of integer part) + len('.') + width of fractional part
 		self.amt_widths = {
-			k:min(7, max(len(str(getattr(d, k).to_integral_value())) for d in data)) + 1 + self.disp_prec
-				for k in self.amt_keys}
+			k: min(7, max(len(str(getattr(d, k).to_integral_value()))
+				for d in data)) + 1 + self.disp_prec
+					for k in self.amt_iwidth_keys}
 
 	async def format(
 			self,
 			display_type,
+			*,
 			color           = True,
 			interactive     = False,
 			line_processing = None,
@@ -397,53 +429,71 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 
 		def make_display():
 
-			def gen_hdr():
+			def gen_hdr(spc):
 
-				Blue, Green = (blue, green) if color else (nocolor, nocolor)
-				Yes, No, All = (green('yes'), red('no'), yellow('all')) if color else ('yes', 'no', 'all')
+				if color:
+					Blue, Green = (blue, green)
+					Yes, No, Only = (green('yes'), red('no'), yellow('only'))
+				else:
+					Blue, Green = (nocolor, nocolor)
+					Yes, No, Only = ('yes', 'no', 'only')
+
 				sort_info = ' '.join(self.sort_info())
 
 				def fmt_filter(k):
-					return '{}:{}'.format(k, {0:No, 1:Yes, 2:All}[getattr(self, k)])
+					return '{}:{}'.format(k, {0: No, 1: Yes, 2: Only}[getattr(self, k)])
 
 				yield '{} (sort order: {}){}'.format(
 					self.hdr_lbl.upper(),
 					Blue(sort_info),
-					' ' * (self.cols - len(f'{self.hdr_lbl} (sort order: {sort_info})')))
+					spc * (self.cols - len(f'{self.hdr_lbl} (sort order: {sort_info})')))
+
+				if hasattr(self, 'sid'):
+					yield f'Seed ID: {self.sid.hl(color=color)}'
 
 				if self.filters:
 					yield 'Filters: {}{}'.format(
 						' '.join(map(fmt_filter, self.filters)),
-						' ' * len(self.filters))
+						spc * len(self.filters))
 
 				yield 'Network: {}'.format(Green(
 					self.proto.coin + ' ' + self.proto.chain_name.upper()))
 
-				yield 'Block {} [{}]'.format(
-					self.rpc.blockcount.hl(color=color),
-					make_timestr(self.rpc.cur_date))
+				if hasattr(self.rpc, 'blockcount'):
+					yield 'Block {} [{}]'.format(
+						self.rpc.blockcount.hl(color=color),
+						make_timestr(self.rpc.cur_date))
 
 				if hasattr(self, 'total'):
-					yield 'Total {}: {}'.format(self.proto.dcoin, self.total.hl(color=color))
+					if hasattr(self, 'unlocked_total') and self.total != self.unlocked_total:
+						yield 'Total {}: {} {}'.format(
+							self.proto.dcoin,
+							self.unlocked_total.hl(color=color),
+							self.total.hl3(color_override='orange', encl='[]'))
+					else:
+						yield 'Total {}: {}'.format(self.proto.dcoin, self.total.hl(color=color))
 
 				yield from getattr(self, dt.subhdr_fmt_method)(cw, color)
 
-				yield ' ' * self.term_width
+				yield spc * self.term_width
 
-				if data and dt.colhdr_fmt_method:
+				if self.disp_data and dt.colhdr_fmt_method:
 					col_hdr = getattr(self, dt.colhdr_fmt_method)(cw, hdr_fs, color)
 					yield col_hdr.rstrip() if line_processing == 'print' else col_hdr
 
 			def get_body(method):
 				if line_processing:
 					return getattr(self.line_processing, line_processing).do(
-						method, data, cw, fs, color, getattr(self, dt.line_fmt_method))
+						method, self.disp_data, cw, fs, color, getattr(self, dt.line_fmt_method))
 				else:
-					return method(data, cw, fs, color, getattr(self, dt.line_fmt_method))
+					return method(self.disp_data, cw, fs, color, getattr(self, dt.line_fmt_method))
 
-			if data and dt.need_column_widths:
-				self.set_amt_widths(data)
-				cw = self.get_column_widths(data, wide=dt.detail, interactive=interactive)
+			if self.disp_data and dt.need_column_widths:
+				self.set_amt_widths(self.disp_data)
+				cw = self.compute_column_widths(
+					self.get_column_widths(self.disp_data, wide=dt.detail),
+					wide = dt.detail,
+					interactive = interactive)
 				cwh = cw._asdict()
 				fp = self.fs_params
 				rfill = ' ' * (self.term_width - self.cols) if scroll else ''
@@ -455,11 +505,10 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 				cw = hdr_fs = fs = None
 
 			return (
-				tuple(gen_hdr()),
+				tuple(gen_hdr(spc='' if line_processing == 'print' else ' ')),
 				tuple(
-					get_body(getattr(self, dt.fmt_method)) if data else
-					[(nocolor, yellow)[color](self.nodata_msg.ljust(self.term_width))])
-			)
+					get_body(getattr(self, dt.fmt_method)) if self.disp_data else
+					[(nocolor, yellow)[color](self.nodata_msg.ljust(self.term_width))]))
 
 		if not gv.stdout.isatty():
 			line_processing = 'print'
@@ -476,10 +525,10 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			if self.has_age and (self.age_fmt in self.age_fmts_date_dependent or dt.detail):
 				await self.set_dates(self.data)
 
-			dsave = self.disp_data
-			data = self.disp_data = list(self.filter_data()) # method could be a generator
+			disp_data_save = self.disp_data
+			self.disp_data = tuple(self.get_disp_data()) # method could be a generator
 
-			if data != dsave:
+			if self.disp_data != disp_data_save:
 				self.pos = 0
 
 			display_hdr, display_body = make_display()
@@ -520,8 +569,7 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			'\n'.join(display_hdr) + '\n'
 			+ dt.item_separator.join(display_body[top:bot])
 			+ fill
-			+ footer
-		)
+			+ footer)
 
 	async def view_filter_and_sort(self):
 
@@ -530,8 +578,7 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			's_': 'sort_action',
 			'd_': 'display_action',
 			'm_': 'scroll_action',
-			'i_': 'item_action',
-		}
+			'i_': 'item_action'}
 
 		def make_key_mappings(scroll):
 			if scroll:
@@ -582,19 +629,20 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 
 			self.oneshot_msg = ''
 
-			if reply in key_mappings:
-				ret = action_classes[reply].run(self, action_methods[reply])
-				if type(ret).__name__ == 'coroutine':
-					await ret
-			elif reply == 'q':
-				msg('')
-				if self.scroll:
-					self.term.set('echo')
-				return
-			else:
-				if not scroll:
-					msg_r('\ninvalid keypress ')
-				await asyncio.sleep(0.3)
+			match reply:
+				case ch if ch in key_mappings:
+					func = action_classes[ch].run
+					arg = action_methods[ch]
+					await func(self, arg) if isAsync(func) else func(self, arg)
+				case 'q':
+					msg('')
+					if self.scroll:
+						self.term.set('echo')
+					return
+				case _:
+					if not scroll:
+						msg_r('\ninvalid keypress ')
+					await asyncio.sleep(0.3)
 
 	@property
 	def blank_prompt(self):
@@ -608,6 +656,41 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			if self.scroll:
 				msg_r('\r'+''.ljust(self.term_width)+'\r'+yellow('Canceling! '))
 			return False
+
+	async def get_idx_from_user(self):
+		return await self.get_idx(f'{self.item_desc} number', self.disp_data)
+
+	async def get_idx(self, desc, data, *, is_addr_idx=False):
+
+		async def do_error_msg():
+			msg_r(
+				'Choice must be a single number between {n} and {m} inclusive{s}'.format(
+					n = list(data.keys())[0] if is_addr_idx else 1,
+					m = list(data.keys())[-1] if is_addr_idx else len(data),
+					s = ' ' if self.scroll else ''))
+			if self.scroll:
+				await asyncio.sleep(1.5)
+				msg_r(CUR_UP(1) + '\r' + ERASE_ALL)
+
+		from ..ui import line_input
+		ur = namedtuple('usr_idx_data', ['idx', 'acct_addr_idx'])
+		while True:
+			msg_r(self.blank_prompt if self.scroll else '\n')
+			usr_ret = line_input(
+				self.cfg,
+				f'Enter {desc} (or ENTER to return to main menu): ')
+			if usr_ret == '':
+				if self.scroll:
+					msg_r(CUR_UP(1) + '\r' + ''.ljust(self.term_width))
+				return None
+			if is_addr_idx:
+				if is_int(usr_ret) and int(usr_ret) in data:
+					return ur(MMGenIdx(data[int(usr_ret)].disp_data_idx + 1), int(usr_ret))
+			else:
+				idx = get_obj(MMGenIdx, n=usr_ret, silent=True)
+				if idx and idx <= len(data):
+					return ur(idx, None)
+			await do_error_msg()
 
 	class action:
 
@@ -672,53 +755,47 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			if not parent.disp_data:
 				return
 
-			from ..ui import line_input
 			while True:
-				msg_r(parent.blank_prompt if parent.scroll else '\n')
-				ret = line_input(
-					parent.cfg,
-					f'Enter {parent.item_desc} number (or ENTER to return to main menu): ')
-				if ret == '':
-					if parent.scroll:
-						msg_r(CUR_UP(1) + '\r' + ''.ljust(parent.term_width))
-					return
-				idx = get_obj(MMGenIdx, n=ret, silent=True)
-				if not idx or idx < 1 or idx > len(parent.disp_data):
-					msg_r(
-						'Choice must be a single number between 1 and {n}{s}'.format(
-							n = len(parent.disp_data),
-							s = ' ' if parent.scroll else ''))
-					if parent.scroll:
-						await asyncio.sleep(1.5)
-						msg_r(CUR_UP(1) + '\r' + ERASE_ALL)
+				# action_method return values:
+				#  True:   action successfully performed
+				#  False:  an error occurred
+				#  None:   action aborted by user or no action performed
+				#  'redo': user will be re-prompted for item number
+				#  'redraw': action successfully performed, screen will be redrawn
+				if usr_ret := await parent.get_idx_from_user():
+					ret = await action_method(parent, usr_ret.idx, usr_ret.acct_addr_idx)
 				else:
-					# action return values:
-					#  True:   action successfully performed
-					#  None:   action aborted by user or no action performed
-					#  False:  an error occurred
-					#  'redo': user will be re-prompted for item number
-					ret = await action_method(parent, idx)
-					if ret != 'redo':
-						break
-					await asyncio.sleep(0.5)
+					ret = None
+				if ret != 'redo':
+					break
+				await asyncio.sleep(0.5)
 
-			if parent.scroll and ret is False:
+			if parent.scroll and (ret is False or ret == 'redraw'):
 				# error messages could leave screen in messy state, so do complete redraw:
 				msg_r(
 					CUR_HOME + ERASE_ALL +
 					await parent.format(display_type='squeezed', interactive=True, scroll=True))
 
-		async def i_balance_refresh(self, parent, idx):
+		async def i_balance_refresh(self, parent, idx, acct_addr_idx=None):
 			if not parent.keypress_confirm(
-					f'Refreshing tracking wallet {parent.item_desc} #{idx}.  Is this what you want?'):
+					f'Refreshing tracking wallet {parent.item_desc} #{idx}. OK?'):
 				return 'redo'
-			await parent.twctl.get_balance(parent.disp_data[idx-1].addr, force_rpc=True)
-			await parent.get_data()
-			parent.oneshot_msg = yellow(f'{parent.proto.dcoin} balance for account #{idx} refreshed')
+			msg_r('Refreshing balance...')
+			res = await parent.twctl.get_balance(parent.disp_data[idx-1].addr, force_rpc=True)
+			if res is None:
+				parent.oneshot_msg = red(
+					f'Unable to refresh {parent.proto.dcoin} balance for {parent.item_desc} #{idx}')
+				return False
+			else:
+				await parent.get_data()
+				parent.oneshot_msg = yellow(
+					f'{parent.proto.dcoin} balance for {parent.item_desc} #{idx} refreshed')
+				if res == 0:
+					return 'redraw' # zeroing balance may mess up display
 
-		async def i_addr_delete(self, parent, idx):
+		async def i_addr_delete(self, parent, idx, acct_addr_idx=None):
 			if not parent.keypress_confirm(
-					'Removing {} {} from tracking wallet.  Is this what you want?'.format(
+					'Removing {} {} from tracking wallet. OK?'.format(
 						parent.item_desc, red(f'#{idx}'))):
 				return 'redo'
 			if await parent.twctl.remove_address(parent.disp_data[idx-1].addr):
@@ -730,47 +807,53 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 				parent.oneshot_msg = red('Address could not be removed')
 				return False
 
-		async def i_comment_add(self, parent, idx):
+		async def i_comment_add(self, parent, idx, acct_addr_idx=None):
 
-			async def do_comment_add(comment):
+			async def do_comment_add(comment_in):
+				from ..obj import TwComment
+				new_comment = await parent.twctl.set_comment(
+					addrspec     = None,
+					comment      = comment_in,
+					trusted_pair = (entry.twmmid, entry.addr),
+					silent       = parent.scroll)
 
-				if await parent.twctl.set_comment(
-						addrspec     = None,
-						comment      = comment,
-						trusted_pair = (entry.twmmid, entry.addr),
-						silent       = parent.scroll):
-					entry.comment = comment
-					edited = cur_comment and comment
-					parent.oneshot_msg = (green if comment else yellow)('Label {a} {b}{c}'.format(
-						a = 'for' if edited else 'added to' if comment else 'removed from',
+				edited = old_comment and new_comment
+				if isinstance(new_comment, TwComment):
+					entry.comment = new_comment
+					parent.oneshot_msg = (green if new_comment else yellow)('Label {a} {b}{c}'.format(
+						a = 'for' if edited else 'added to' if new_comment else 'removed from',
 						b = desc,
 						c = ' edited' if edited else ''))
-					return True
+					return 'redraw' if parent.cfg.coin == 'XMR' else True
 				else:
 					await asyncio.sleep(3)
 					parent.oneshot_msg = red('Label for {desc} could not be {action}'.format(
 						desc = desc,
-						action = 'edited' if cur_comment and comment else 'added' if comment else 'removed'
-					))
+						action = 'edited' if edited else 'added' if new_comment else 'removed'))
 					return False
 
+			if acct_addr_idx is None:
+				desc       = f'{parent.item_desc} #{idx}'
+				color_desc = f'{parent.item_desc} {red("#" + str(idx))}'
+			else:
+				desc       = f'address #{acct_addr_idx}'
+				color_desc = f'address {red("#" + str(acct_addr_idx))}'
+
 			entry = parent.disp_data[idx-1]
-			desc = f'{parent.item_desc} #{idx}'
-			cur_comment = parent.disp_data[idx-1].comment
-			msg('Current label: {}'.format(cur_comment.hl() if cur_comment else '(none)'))
+			old_comment = entry.comment
+			msg('Current label: {}'.format(old_comment.hl() if old_comment else '(none)'))
 
 			from ..ui import line_input
-			res = line_input(
-				parent.cfg,
-				'Enter label text for {} {}: '.format(parent.item_desc, red(f'#{idx}')),
-				insert_txt = cur_comment)
-
-			if res == cur_comment:
-				parent.oneshot_msg = yellow(f'Label for {desc} unchanged')
-				return None
-			elif res == '':
-				if not parent.keypress_confirm(f'Removing label for {desc}.  Is this what you want?'):
-					return 'redo'
+			match res:= line_input(
+					parent.cfg,
+					f'Enter label text for {color_desc}: ',
+					insert_txt = old_comment):
+				case s if s == old_comment:
+					parent.oneshot_msg = yellow(f'Label for {desc} unchanged')
+					return None
+				case '':
+					if not parent.keypress_confirm(f'Removing label for {color_desc}. OK?'):
+						return 'redo'
 
 			return await do_comment_add(res)
 
@@ -804,19 +887,19 @@ class TwView(MMGenObject, metaclass=AsyncInit):
 			return action_method(parent)
 
 		def s_addr(self, parent):
-			parent.do_sort('addr')
+			parent.sort_data('addr')
 
 		def s_age(self, parent):
-			parent.do_sort('age')
+			parent.sort_data('age')
 
 		def s_amt(self, parent):
-			parent.do_sort('amt')
+			parent.sort_data('amt')
 
 		def s_txid(self, parent):
-			parent.do_sort('txid')
+			parent.sort_data('txid')
 
 		def s_twmmid(self, parent):
-			parent.do_sort('twmmid')
+			parent.sort_data('twmmid')
 
 		def s_reverse(self, parent):
 			parent.data.reverse()

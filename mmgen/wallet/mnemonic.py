@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -32,7 +32,7 @@ class wallet(wallet):
 
 		if not self.cfg.stdin_tty:
 			from ..ui import get_data_from_user
-			return get_data_from_user(self.cfg, desc)
+			return get_data_from_user(self.cfg, desc=desc)
 
 		self._print_seed_type()
 
@@ -53,8 +53,8 @@ class wallet(wallet):
 		seed = self.seed.data
 
 		bc = self.conv_cls(self.wl_id)
-		mn  = bc.frombytes(seed, 'seed')
-		rev = bc.tobytes(mn, 'seed')
+		mn  = bc.frombytes(seed, pad='seed')
+		rev = bc.tobytes(mn, pad='seed')
 
 		# Internal error, so just die on fail
 		self.cfg._util.compare_or_die(rev, 'recomputed seed', seed, 'original seed', e='Internal error')
@@ -78,8 +78,8 @@ class wallet(wallet):
 				msg(f'Invalid mnemonic: word #{n} is not in the {self.wl_id.upper()} wordlist')
 				return False
 
-		seed = bc.tobytes(mn, 'seed')
-		rev  = bc.frombytes(seed, 'seed')
+		seed = bc.tobytes(mn, pad='seed')
+		rev  = bc.frombytes(seed, pad='seed')
 
 		if len(seed) * 8 not in Seed.lens:
 			msg('Invalid mnemonic (produces too large a number)')
@@ -93,7 +93,7 @@ class wallet(wallet):
 			desc2 = 'original mnemonic',
 			e     = 'Internal error')
 
-		self.seed = Seed(self.cfg, seed)
+		self.seed = Seed(self.cfg, seed_bin=seed)
 		self.ssdata.mnemonic = mn
 
 		self.check_usr_seed_len()

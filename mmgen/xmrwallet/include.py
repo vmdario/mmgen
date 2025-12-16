@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -19,7 +19,7 @@ from ..color import red, green, pink
 from ..addr import CoinAddr, AddrIdx
 from ..util import die
 
-def gen_acct_addr_info(self, wallet_data, account, indent=''):
+def gen_acct_addr_info(self, wallet_data, account, *, indent=''):
 	fs = indent + '{I:<3} {A} {U} {B} {L}'
 	addrs_data = wallet_data.addrs_data[account]['addresses']
 
@@ -47,7 +47,7 @@ def gen_acct_addr_info(self, wallet_data, account, indent=''):
 		from .ops import fmt_amt
 		yield fs.format(
 			I = addr['address_index'],
-			A = ca.hl(0) if self.cfg.full_address else ca.fmt(0, color=True, width=addr_width),
+			A = ca.hl(0) if self.cfg.full_address else ca.fmt(0, addr_width, color=True),
 			U = (red('True ') if addr['used'] else green('False')),
 			B = fmt_amt(bal),
 			L = pink(addr['label']))
@@ -77,7 +77,8 @@ class XMRWalletAddrSpec(HiliteStr, InitErrors, MMGenObject):
 				me = str.__new__(cls, f'{arg1}:{arg2}:{arg3}')
 				for arg in [arg1, arg2] + ([] if arg3 is None else [arg3]):
 					assert isinstance(arg, int), f'{arg}: XMRWalletAddrSpec component not of type int'
-					assert arg is None or arg <= 9999, f'{arg}: XMRWalletAddrSpec component greater than 9999'
+					assert arg is None or arg <= 9999, (
+						f'{arg}: XMRWalletAddrSpec component greater than 9999')
 				me.wallet = AddrIdx(arg1)
 				me.account = arg2
 				me.account_address = arg3

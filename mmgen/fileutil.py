@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -42,10 +42,7 @@ def check_or_create_dir(path):
 		if os.getenv('MMGEN_TEST_SUITE'):
 			if os.path.exists(path): # path is a link or regular file
 				from subprocess import run
-				run([
-					('rm' if sys.platform == 'win32' else '/bin/rm'),
-					'-rf',
-					str(path)])
+				run(['rm', '-rf', str(path)])
 				set_vt100()
 		try:
 			os.makedirs(path, 0o700)
@@ -60,17 +57,17 @@ def check_binary(args):
 		die(2, f'{args[0]!r} binary missing, not in path, or not executable')
 	set_vt100()
 
-def shred_file(fn, verbose=False):
+def shred_file(cfg, fn, *, iterations=30):
 	check_binary(['shred', '--version'])
 	from subprocess import run
 	run(
-		['shred', '--force', '--iterations=30', '--zero', '--remove=wipesync']
-		+ (['--verbose'] if verbose else [])
+		['shred', '--force', f'--iterations={iterations}', '--zero', '--remove=wipesync']
+		+ (['--verbose'] if cfg.verbose else [])
 		+ [str(fn)],
-		check=True)
+		check = True)
 	set_vt100()
 
-def _check_file_type_and_access(fname, ftype, blkdev_ok=False):
+def _check_file_type_and_access(fname, ftype, *, blkdev_ok=False):
 
 	import stat
 
@@ -106,16 +103,20 @@ def _check_file_type_and_access(fname, ftype, blkdev_ok=False):
 
 	return True
 
-def check_infile(f, blkdev_ok=False):
+def check_infile(f, *, blkdev_ok=False):
 	return _check_file_type_and_access(f, 'input file', blkdev_ok=blkdev_ok)
 
-def check_outfile(f, blkdev_ok=False):
+def check_outfile(f, *, blkdev_ok=False):
 	return _check_file_type_and_access(f, 'output file', blkdev_ok=blkdev_ok)
+
+def check_outfile_dir(fn, *, blkdev_ok=False):
+	return _check_file_type_and_access(
+		os.path.dirname(os.path.abspath(fn)), 'output directory', blkdev_ok=blkdev_ok)
 
 def check_outdir(f):
 	return _check_file_type_and_access(f, 'output directory')
 
-def get_seed_file(cfg, nargs, wallets=None, invoked_as=None):
+def get_seed_file(cfg, *, nargs, wallets=None, invoked_as=None):
 
 	wallets = wallets or cfg._args
 
@@ -126,21 +127,22 @@ def get_seed_file(cfg, nargs, wallets=None, invoked_as=None):
 
 	wd_from_opt = bool(cfg.hidden_incog_input_params or cfg.in_fmt) # have wallet data from opt?
 
-	if len(wallets) + (wd_from_opt or bool(wf)) < nargs:
-		if not wf:
-			msg('No default wallet found, and no other seed source was specified')
-		cfg._usage()
-	elif len(wallets) > nargs:
-		cfg._usage()
-	elif len(wallets) == nargs and wf and invoked_as != 'gen':
-		cfg._util.qmsg('Warning: overriding default wallet with user-supplied wallet')
+	match len(wallets): # errors, warnings:
+		case x if x < nargs - (wd_from_opt or bool(wf)):
+			if not wf:
+				msg('No default wallet found, and no other seed source was specified')
+			cfg._usage()
+		case x if x > nargs:
+			cfg._usage()
+		case x if x == nargs and wf and invoked_as != 'gen':
+			cfg._util.qmsg('Warning: overriding default wallet with user-supplied wallet')
 
 	if wallets or wf:
 		check_infile(wallets[0] if wallets else wf)
 
 	return str(wallets[0]) if wallets else (wf, None)[wd_from_opt] # could be a Path instance
 
-def _open_or_die(filename, mode, silent=False):
+def _open_or_die(filename, mode, *, silent=False):
 	try:
 		return open(filename, mode)
 	except:
@@ -155,6 +157,7 @@ def write_data_to_file(
 		cfg,
 		outfile,
 		data,
+		*,
 		desc                  = 'data',
 		ask_write             = False,
 		ask_write_prompt      = '',
@@ -162,6 +165,7 @@ def write_data_to_file(
 		ask_overwrite         = True,
 		ask_tty               = True,
 		no_tty                = False,
+		no_stdout             = False,
 		quiet                 = False,
 		binary                = False,
 		ignore_opt_outdir     = False,
@@ -213,10 +217,9 @@ def write_data_to_file(
 			else:
 				msg('Redirecting output to file')
 
-		if binary:
-			if sys.platform == 'win32': # condition on separate line for pylint
-				import msvcrt
-				msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
+		if binary and sys.platform == 'win32':
+			import msvcrt
+			msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
 
 		# MSWin workaround. See msg_r()
 		try:
@@ -273,14 +276,16 @@ def write_data_to_file(
 
 		return True
 
-	if cfg.stdout or outfile in ('', '-'):
+	if no_stdout:
+		do_file(outfile, ask_write_prompt)
+	elif cfg.stdout or outfile in ('', '-'):
 		do_stdout()
 	elif sys.stdin.isatty() and not sys.stdout.isatty():
 		do_stdout()
 	else:
 		do_file(outfile, ask_write_prompt)
 
-def get_words_from_file(cfg, infile, desc, quiet=False):
+def get_words_from_file(cfg, infile, *, desc, quiet=False):
 
 	if not quiet:
 		cfg._util.qmsg(f'Getting {desc} from file ‘{infile}’')
@@ -300,6 +305,7 @@ def get_words_from_file(cfg, infile, desc, quiet=False):
 def get_data_from_file(
 		cfg,
 		infile,
+		*,
 		desc   = 'data',
 		dash   = False,
 		silent = False,
@@ -327,6 +333,7 @@ def get_data_from_file(
 def get_lines_from_file(
 		cfg,
 		fn,
+		*,
 		desc          = 'data',
 		trim_comments = False,
 		quiet         = False,
@@ -339,7 +346,7 @@ def get_lines_from_file(
 		if have_enc_ext or not is_utf8(data):
 			m = ('Attempting to decrypt', 'Decrypting')[have_enc_ext]
 			cfg._util.qmsg(f'{m} {desc} ‘{fn}’')
-			data = Crypto(cfg).mmgen_decrypt_retry(data, desc)
+			data = Crypto(cfg).mmgen_decrypt_retry(data, desc=desc)
 		return data
 
 	lines = decrypt_file_maybe().decode().splitlines()

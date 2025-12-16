@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -20,13 +20,13 @@ class mainnet(mainnet):
 	wif_ver_num     = {'std': 'b0'}
 	mmtypes         = ('L', 'C', 'S', 'B')
 	coin_amt        = 'LTCAmt'
-	max_tx_fee      = '0.3'
+	max_tx_fee      = 0.3
+	max_op_return_data_len = 80
 	base_coin       = 'LTC'
 	forks           = []
 	bech32_hrp      = 'ltc'
 	avg_bdi         = 150
 	halving_interval = 840000
-	ignore_daemon_version = False
 
 class testnet(mainnet):
 	# addr ver nums same as Bitcoin testnet, except for 'p2sh'

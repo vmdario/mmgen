@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -61,7 +61,7 @@ def get_terminfo_colors(term=None):
 		cmd.append(term)
 
 	try:
-		cmdout = run(cmd, stdout=PIPE, check=True).stdout.decode()
+		cmdout = run(cmd, stdout=PIPE, check=True, text=True).stdout
 	except:
 		set_vt100()
 		return None
@@ -95,22 +95,23 @@ def init_color(num_colors='auto'):
 			num_colors = get_terminfo_colors() or 16
 
 	reset = '\033[0m'
-	if num_colors == 0:
-		ncc = (lambda s: s).__code__
-		for c in _colors:
-			getattr(self, c).__code__ = ncc
-	elif num_colors == 256:
-		for c, e in _colors.items():
-			start = (
-				'\033[38;5;{};1m'.format(e[0]) if type(e[0]) == int else
-				'\033[38;5;{};48;5;{};1m'.format(*e[0]))
-			getattr(self, c).__code__ = eval(f'(lambda s: "{start}" + s + "{reset}").__code__')
-	elif num_colors in (8, 16):
-		for c, e in _colors.items():
-			start = (
-				'\033[{}m'.format(e[1][0]) if e[1][1] == 0 else
-				'\033[{};{}m'.format(*e[1]))
-			getattr(self, c).__code__ = eval(f'(lambda s: "{start}" + s + "{reset}").__code__')
+	match num_colors:
+		case 0:
+			ncc = (lambda s: s).__code__
+			for c in _colors:
+				getattr(self, c).__code__ = ncc
+		case 256:
+			for c, e in _colors.items():
+				start = (
+					'\033[38;5;{};1m'.format(e[0]) if type(e[0]) == int else
+					'\033[38;5;{};48;5;{};1m'.format(*e[0]))
+				getattr(self, c).__code__ = eval(f'(lambda s: "{start}" + s + "{reset}").__code__')
+		case 8 | 16:
+			for c, e in _colors.items():
+				start = (
+					'\033[{}m'.format(e[1][0]) if e[1][1] == 0 else
+					'\033[{};{}m'.format(*e[1]))
+				getattr(self, c).__code__ = eval(f'(lambda s: "{start}" + s + "{reset}").__code__')
 
 	set_vt100()
 

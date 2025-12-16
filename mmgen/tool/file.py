@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,16 +27,16 @@ class tool_cmd(tool_cmd_base):
 
 	need_proto = True
 
-	def __init__(self, cfg, cmdname=None, proto=None, mmtype=None):
+	def __init__(self, cfg, *, cmdname=None, proto=None, mmtype=None):
 		if cmdname == 'txview':
 			self.need_amt = True
 		super().__init__(cfg=cfg, cmdname=cmdname, proto=proto, mmtype=mmtype)
 
 	def _file_chksum(self, mmgen_addrfile, obj):
-		kwargs = {'skip_chksum_msg':True}
+		kwargs = {'skip_chksum_msg': True}
 		if not obj.__name__ == 'PasswordList':
-			kwargs.update({'key_address_validity_check':False})
-		ret = obj(self.cfg, self.proto, mmgen_addrfile, **kwargs)
+			kwargs.update({'key_address_validity_check': False})
+		ret = obj(self.cfg, self.proto, infile=mmgen_addrfile, **kwargs)
 		if self.cfg.verbose:
 			from ..util import msg, capfirst
 			if ret.al_id.mmtype.name == 'password':
@@ -85,9 +85,7 @@ class tool_cmd(tool_cmd_base):
 					'pager': 'send output to pager',
 					'terse': 'produce compact tabular output',
 					'sort':  'sort order for transaction inputs and outputs ' + options_annot_str(['addr', 'raw']),
-					'filesort': 'file sort order ' + options_annot_str(['mtime', 'ctime', 'atime']),
-				}
-			},
+					'filesort': 'file sort order ' + options_annot_str(['mtime', 'ctime', 'atime'])}},
 			*infiles,
 			**kwargs):
 		"display specified raw or signed MMGen transaction files in human-readable form"

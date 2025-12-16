@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -70,9 +70,12 @@ class OpSweep(OpMixinSpec, OpWallet):
 		def create_new_addr_maybe(h, account, label):
 			if keypress_confirm(self.cfg, f'\nCreate new address for account #{account}?'):
 				return h.create_new_addr(account, label)
-			elif not keypress_confirm(self.cfg, f'Sweep to last existing address of account #{account}?'):
-				die(1, 'Exiting at user request')
-			return None
+			else:
+				keypress_confirm(
+					self.cfg,
+					f'Sweep to last existing address of account #{account}?',
+					do_exit = True)
+				return None
 
 		dest_addr_chk = None
 
@@ -82,7 +85,10 @@ class OpSweep(OpMixinSpec, OpWallet):
 				h, self.account, f'{self.name} from this account [{make_timestr()}]')
 			if dest_addr_chk:
 				wallet_data = h.get_wallet_data(print=False)
-			dest_addr, dest_addr_idx = h.get_last_addr(self.account, wallet_data, display=not dest_addr_chk)
+			dest_addr, dest_addr_idx = h.get_last_addr(
+				self.account,
+				wallet_data,
+				display = not dest_addr_chk)
 			if dest_addr_chk:
 				h.print_acct_addrs(wallet_data, self.account)
 		elif self.dest_acct is None: # sweep to wallet
@@ -97,11 +103,13 @@ class OpSweep(OpMixinSpec, OpWallet):
 					label = f'{self.name} from {self.source.idx}:{self.account} [{make_timestr()}]')
 				dest_addr_idx = 0
 				h2.get_wallet_data()
-			elif keypress_confirm(self.cfg, f'Sweep to last existing account of wallet {wf.name!r}?'):
+			else:
+				keypress_confirm(
+					self.cfg,
+					f'Sweep to last existing account of wallet {wf.name!r}?',
+					do_exit = True)
 				dest_acct, dest_addr_chk = h2.get_last_acct(wallet_data2.accts_data)
 				dest_addr, dest_addr_idx = h2.get_last_addr(dest_acct, wallet_data2, display=False)
-			else:
-				die(1, 'Exiting at user request')
 
 			h2.close_wallet('destination')
 			h.open_wallet('source', refresh=False)
@@ -113,7 +121,10 @@ class OpSweep(OpMixinSpec, OpWallet):
 				dest_addr_chk = create_new_addr_maybe(h, dest_acct, label)
 				if dest_addr_chk:
 					wallet_data = h.get_wallet_data(print=False)
-				dest_addr, dest_addr_idx = h.get_last_addr(dest_acct, wallet_data, display=not dest_addr_chk)
+				dest_addr, dest_addr_idx = h.get_last_addr(
+					dest_acct,
+					wallet_data,
+					display = not dest_addr_chk)
 				if dest_addr_chk:
 					h.print_acct_addrs(wallet_data, dest_acct)
 				return dest_addr, dest_addr_idx, dest_addr_chk
@@ -138,7 +149,12 @@ class OpSweep(OpMixinSpec, OpWallet):
 			f'dest_addr: ({dest_addr}) != dest_addr_chk: ({dest_addr_chk})')
 
 		msg(f'\n    Creating {self.name} transaction...')
-		return (h, h.make_sweep_tx(self.account, dest_acct, dest_addr_idx, dest_addr, wallet_data.addrs_data))
+		return (h, h.make_sweep_tx(
+			self.account,
+			dest_acct,
+			dest_addr_idx,
+			dest_addr,
+			wallet_data.addrs_data))
 
 	@property
 	def add_desc(self):
@@ -153,10 +169,10 @@ class OpSweep(OpMixinSpec, OpWallet):
 			die(2, f'{self.account}: requested account index out of bounds (>{max_acct})')
 
 	async def main(self):
-
-		gmsg(
-			f'\n{self.stem.capitalize()}ing account #{self.account}'
-			f' of wallet {self.source.idx}{self.add_desc}')
+		if not self.compat_call:
+			gmsg(
+				f'\n{self.stem.capitalize()}ing account #{self.account}'
+				f' of wallet {self.source.idx}{self.add_desc}')
 
 		h = MoneroWalletRPC(self, self.source)
 
@@ -175,25 +191,30 @@ class OpSweep(OpMixinSpec, OpWallet):
 		if self.cfg.tx_relay_daemon:
 			self.display_tx_relay_info(indent='    ')
 
-		msg('Saving TX data to file')
+		if not self.compat_call:
+			msg('Saving TX data to file')
+
 		new_tx.write(delete_metadata=True)
 
 		if self.cfg.no_relay or self.cfg.autosign:
 			return True
 
-		if keypress_confirm(self.cfg, f'Relay {self.name} transaction?'):
-			if self.cfg.tx_relay_daemon:
-				await h.stop_wallet('source')
-				msg('')
-				self.init_tx_relay_daemon()
-				h = MoneroWalletRPC(self, self.source)
-				h.open_wallet('TX-relay-configured source', refresh=False)
-			msg_r(f'\n    Relaying {self.name} transaction...')
-			h.relay_tx(new_tx.data.metadata)
-			gmsg('\nAll done')
-			return True
-		else:
-			die(1, '\nExiting at user request')
+		keypress_confirm(
+			self.cfg,
+			f'Relay {self.name} transaction?',
+			do_exit = True,
+			exit_msg = '\nExiting at user request')
+
+		if self.cfg.tx_relay_daemon:
+			await h.stop_wallet('source')
+			msg('')
+			self.init_tx_relay_daemon()
+			h = MoneroWalletRPC(self, self.source)
+			h.open_wallet('TX-relay-configured source', refresh=False)
+		msg_r(f'\n    Relaying {self.name} transaction...')
+		h.relay_tx(new_tx.data.metadata)
+		gmsg('\nAll done')
+		return True
 
 class OpSweepAll(OpSweep):
 	stem = 'sweep'

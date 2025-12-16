@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -20,7 +20,6 @@ from ...ui import keypress_confirm
 from ...proto.xmr.daemon import MoneroWalletDaemon
 from ...proto.xmr.rpc import MoneroWalletRPCClient
 
-from ..file.tx import MoneroMMGenTX
 from ..rpc import MoneroWalletRPC
 
 from . import OpBase
@@ -45,7 +44,7 @@ class OpSubmit(OpWallet):
 		else:
 			from ...autosign import Signable
 			fn = Signable.xmr_transaction(self.asi).get_unsubmitted()
-		return MoneroMMGenTX.ColdSigned(cfg=self.cfg, fn=fn)
+		return self.get_tx_cls('ColdSigned')(cfg=self.cfg, fn=fn)
 
 	def get_relay_rpc(self):
 
@@ -56,8 +55,7 @@ class OpSubmit(OpWallet):
 			proto       = self.proto,
 			wallet_dir  = self.cfg.wallet_dir or '.',
 			test_suite  = self.cfg.test_suite,
-			monerod_addr = relay_opt[1],
-		)
+			monerod_addr = relay_opt[1])
 
 		u = wd.usr_daemon_args = []
 		if self.cfg.test_suite:
@@ -68,8 +66,7 @@ class OpSubmit(OpWallet):
 		return MoneroWalletRPCClient(
 			cfg             = self.cfg,
 			daemon          = wd,
-			test_connection = False,
-		)
+			test_connection = False)
 
 	async def main(self):
 		tx = self.tx
@@ -89,24 +86,21 @@ class OpSubmit(OpWallet):
 		if self.cfg.tx_relay_daemon:
 			self.display_tx_relay_info(indent='    ')
 
-		if keypress_confirm(self.cfg, f'{self.name.capitalize()} transaction?'):
-			if self.cfg.tx_relay_daemon:
-				msg_r('Relaying transaction to remote daemon, please be patient...')
-				t_start = time.time()
-			res = self.c.call(
-				'submit_transfer',
-				tx_data_hex = tx.data.signed_txset)
-			assert res['tx_hash_list'][0] == tx.data.txid, 'TxID mismatch in ‘submit_transfer’ result!'
-			if self.cfg.tx_relay_daemon:
-				from ...util2 import format_elapsed_hr
-				msg(f'success\nRelay time: {format_elapsed_hr(t_start, rel_now=False, show_secs=True)}')
-		else:
-			die(1, 'Exiting at user request')
+		keypress_confirm(self.cfg, f'{self.name.capitalize()} transaction?', do_exit=True)
 
-		new_tx = MoneroMMGenTX.NewSubmitted(
-			cfg          = self.cfg,
-			_in_tx       = tx,
-		)
+		if self.cfg.tx_relay_daemon:
+			msg_r('Relaying transaction to remote daemon, please be patient...')
+			t_start = time.time()
+		res = self.c.call(
+			'submit_transfer',
+			tx_data_hex = tx.data.signed_txset)
+		assert res['tx_hash_list'][0] == tx.data.txid, 'TxID mismatch in ‘submit_transfer’ result!'
+		if self.cfg.tx_relay_daemon:
+			from ...util2 import format_elapsed_hr
+			msg(f'success\nRelay time: {format_elapsed_hr(t_start, rel_now=False, show_secs=True)}')
+
+		new_tx = self.get_tx_cls('NewSubmitted')(cfg=self.cfg, _in_tx=tx)
+
 		gmsg('\nOK')
 		new_tx.write(
 			ask_write     = not self.cfg.autosign,
@@ -123,10 +117,9 @@ class OpResubmit(OpSubmit):
 	def get_tx(self):
 		from ...autosign import Signable
 		fns = Signable.xmr_transaction(self.asi).get_submitted()
-		return sorted(
-			(MoneroMMGenTX.Submitted(self.cfg, Path(fn)) for fn in fns),
-				key = lambda x: getattr(x.data, 'submit_time', None) or x.data.create_time
-		)[-1]
+		cls = self.get_tx_cls('Submitted')
+		return sorted((cls(self.cfg, Path(fn)) for fn in fns),
+			key = lambda x: getattr(x.data, 'submit_time', None) or x.data.create_time)[-1]
 
 class OpAbort(OpBase):
 	opts = ('watch_only', 'autosign')

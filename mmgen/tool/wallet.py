@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@ from ..wallet import Wallet
 class tool_cmd(tool_cmd_base):
 	"key, address or subseed generation from an MMGen wallet"
 
-	def __init__(self, cfg, cmdname=None, proto=None, mmtype=None):
+	def __init__(self, cfg, *, cmdname=None, proto=None, mmtype=None):
 		self.need_proto = cmdname in ('gen_key', 'gen_addr')
 		super().__init__(cfg, cmdname=cmdname, proto=proto, mmtype=mmtype)
 
@@ -40,49 +40,56 @@ class tool_cmd(tool_cmd_base):
 			wallets = [wallet] if wallet else [],
 			nargs   = 1)
 
-	def get_subseed(self, subseed_idx: str, wallet=''):
+	def get_subseed(self, subseed_idx: str, *, wallet=''):
 		"get the Seed ID of a single subseed by Subseed Index for default or specified wallet"
 		self.cfg._set_quiet(True)
-		return Wallet(self.cfg, self._get_seed_file(wallet)).seed.subseed(subseed_idx).sid
+		return Wallet(self.cfg, fn=self._get_seed_file(wallet)).seed.subseed(subseed_idx).sid
 
-	def get_subseed_by_seed_id(self, seed_id: str, wallet='', last_idx=SubSeedList.dfl_len):
+	def get_subseed_by_seed_id(self, seed_id: str, *, wallet='', last_idx=SubSeedList.dfl_len):
 		"get the Subseed Index of a single subseed by Seed ID for default or specified wallet"
 		self.cfg._set_quiet(True)
-		ret = Wallet(self.cfg, self._get_seed_file(wallet)).seed.subseed_by_seed_id(seed_id, last_idx)
+		ret = Wallet(
+			self.cfg,
+			fn = self._get_seed_file(wallet)).seed.subseed_by_seed_id(seed_id, last_idx=last_idx)
 		return ret.ss_idx if ret else None
 
-	def list_subseeds(self, subseed_idx_range: str, wallet=''):
+	def list_subseeds(self, subseed_idx_range: str, *, wallet=''):
 		"list a range of subseed Seed IDs for default or specified wallet"
 		self.cfg._set_quiet(True)
 		from ..subseed import SubSeedIdxRange
-		return Wallet(self.cfg, self._get_seed_file(wallet)).seed.subseeds.format(
+		return Wallet(self.cfg, fn=self._get_seed_file(wallet)).seed.subseeds.format(
 			*SubSeedIdxRange(subseed_idx_range))
 
 	def list_shares(self,
 			share_count: int,
+			*,
 			id_str = 'default',
 			master_share: f'(min:1, max:{MasterShareIdx.max_val}, 0=no master share)' = 0,
 			wallet = ''):
 		"list the Seed IDs of the shares resulting from a split of default or specified wallet"
 		self.cfg._set_quiet(True)
-		return Wallet(self.cfg, self._get_seed_file(wallet)).seed.split(
-			share_count, id_str, master_share).format()
+		return Wallet(
+			self.cfg,
+			fn = self._get_seed_file(wallet)).seed.split(
+				share_count,
+				id_str = id_str,
+				master_idx = master_share).format()
 
-	def gen_key(self, mmgen_addr: str, wallet=''):
+	def gen_key(self, mmgen_addr: str, *, wallet=''):
 		"generate a single WIF key for specified MMGen address from default or specified wallet"
-		return self._gen_keyaddr(mmgen_addr, 'wif', wallet)
+		return self._gen_keyaddr(mmgen_addr, 'wif', wallet=wallet)
 
-	def gen_addr(self, mmgen_addr: str, wallet=''):
+	def gen_addr(self, mmgen_addr: str, *, wallet=''):
 		"generate a single MMGen address from default or specified wallet"
-		return self._gen_keyaddr(mmgen_addr, 'addr', wallet)
+		return self._gen_keyaddr(mmgen_addr, 'addr', wallet=wallet)
 
-	def _gen_keyaddr(self, mmgen_addr, target, wallet=''):
+	def _gen_keyaddr(self, mmgen_addr, target, *, wallet=''):
 		from ..addr import MMGenID
 		from ..addrlist import AddrList, AddrIdxList
 
 		addr = MMGenID(self.proto, mmgen_addr)
 		self.cfg._set_quiet(True)
-		ss = Wallet(self.cfg, self._get_seed_file(wallet))
+		ss = Wallet(self.cfg, fn=self._get_seed_file(wallet))
 
 		if ss.seed.sid != addr.sid:
 			from ..util import die
@@ -92,7 +99,7 @@ class tool_cmd(tool_cmd_base):
 			cfg       = self.cfg,
 			proto     = self.proto,
 			seed      = ss.seed,
-			addr_idxs = AddrIdxList(str(addr.idx)),
+			addr_idxs = AddrIdxList(fmt_str=str(addr.idx)),
 			mmtype    = addr.mmtype,
 			skip_chksum = True).data[0]
 

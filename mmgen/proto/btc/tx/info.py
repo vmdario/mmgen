@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # MMGen Wallet, a terminal-based cryptocurrency wallet
-# Copyright (C)2013-2024 The MMGen Project <mmgen@tuta.io>
+# Copyright (C)2013-2025 The MMGen Project <mmgen@tuta.io>
 # Licensed under the GNU General Public License, Version 3:
 #   https://www.gnu.org/licenses
 # Public project repositories:
@@ -14,12 +14,13 @@ proto.btc.tx.info: Bitcoin transaction info class
 
 from ....tx.info import TxInfo
 from ....util import fmt, die
-from ....color import red, green, pink
+from ....color import red, green, blue, pink
 from ....addr import MMGenID
 
 class TxInfo(TxInfo):
+
 	sort_orders = ('addr', 'raw')
-	txinfo_hdr_fs = 'TRANSACTION DATA\n\nID={i} ({a} {c}) RBF={r} Sig={s} Locktime={l}\n'
+	txinfo_hdr_fs = '{hdr}\n  ID={i} ({a} {c}) RBF={r} Sig={s} Locktime={l}\n'
 	txinfo_hdr_fs_short = 'TX {i} ({a} {c}) RBF={r} Sig={s} Locktime={l}\n'
 	txinfo_ftr_fs = fmt("""
 		Input amount: {i} {d}
@@ -36,8 +37,8 @@ class TxInfo(TxInfo):
 			pink('{:0.6f}%'.format(tx.fee / tx.send_amt * 100))
 		)
 
-	def format_abs_fee(self, color, iwidth):
-		return self.tx.fee.fmt(color=color, iwidth=iwidth)
+	def format_abs_fee(self, iwidth, /, *, color=None):
+		return self.tx.fee.fmt(iwidth, color=color)
 
 	def format_verbose_footer(self):
 		tx = self.tx
@@ -48,7 +49,7 @@ class TxInfo(TxInfo):
 			out += f', Base {tsize-wsize}, Witness {wsize}'
 		return out + '\n'
 
-	def format_body(self, blockcount, nonmm_str, max_mmwid, enl, terse, sort):
+	def format_body(self, blockcount, nonmm_str, max_mmwid, enl, *, terse, sort):
 
 		if sort not in self.sort_orders:
 			die(1, '{!r}: invalid transaction view sort order. Valid options: {}'.format(
@@ -58,13 +59,16 @@ class TxInfo(TxInfo):
 		def get_mmid_fmt(e, is_input):
 			if e.mmid:
 				return e.mmid.fmt2(
-					width=max_mmwid,
-					encl='()',
-					color=True,
-					append_chars=('', ' (chg)')[bool(not is_input and e.is_chg and terse)],
-					append_color='green')
+					max_mmwid,
+					encl = '()',
+					color = True,
+					append_chars = ('', ' (chg)')[bool(not is_input and e.is_chg and terse)],
+					append_color = 'green')
 			else:
-				return MMGenID.fmtc(nonmm_str, width=max_mmwid, color=True)
+				return MMGenID.fmtc(
+					'[vault address]' if not is_input and e.is_vault else nonmm_str,
+					max_mmwid,
+					color = True)
 
 		def format_io(desc):
 			io = getattr(tx, desc)
@@ -79,17 +83,20 @@ class TxInfo(TxInfo):
 				'raw':  lambda: io
 			}[sort]
 
+			def data_disp(data):
+				return f'OP_RETURN data ({len(data)} bytes)'
+
 			if terse:
 				iwidth = max(len(str(int(e.amt))) for e in io)
-				addr_w = max(len(e.addr.views[vp1]) for f in (tx.inputs, tx.outputs) for e in f)
+				addr_w = max((len(e.addr.views[vp1]) if e.addr else len(data_disp(e.data))) for f in (tx.inputs, tx.outputs) for e in f)
 				for n, e in enumerate(io_sorted()):
 					yield '{:3} {} {} {} {}\n'.format(
 						n+1,
-						e.addr.fmt(vp1, width=addr_w, color=True),
-						get_mmid_fmt(e, is_input),
-						e.amt.fmt(iwidth=iwidth, color=True),
+						e.addr.fmt(vp1, addr_w, color=True) if e.addr else blue(data_disp(e.data).ljust(addr_w)),
+						get_mmid_fmt(e, is_input) if e.addr else ''.ljust(max_mmwid),
+						e.amt.fmt(iwidth, color=True),
 						tx.dcoin)
-					if have_bch:
+					if have_bch and e.addr:
 						yield '{:3} [{}]\n'.format('', e.addr.hl(vp2, color=False))
 			else:
 				col1_w = len(str(len(io))) + 1
@@ -105,8 +112,11 @@ class TxInfo(TxInfo):
 							if have_bch:
 								yield ('', '', f'[{e.addr.hl(vp2, color=False)}]')
 						else:
-							yield (n+1, 'address:', f'{e.addr.hl(vp1)} {mmid_fmt}')
-							if have_bch:
+							yield (
+								n + 1,
+								'address:',
+								(f'{e.addr.hl(vp1)} {mmid_fmt}' if e.addr else e.data.hl(add_label=True)))
+							if have_bch and e.addr:
 								yield ('', '', f'[{e.addr.hl(vp2, color=False)}]')
 						if e.comment:
 							yield ('',  'comment:', e.comment.hl())
@@ -128,12 +138,15 @@ class TxInfo(TxInfo):
 			vp1 = 0
 
 		return (
-			'Displaying inputs and outputs in {} sort order'.format({'raw':'raw', 'addr':'address'}[sort])
+			'Inputs/Outputs sort order: {}'.format({
+				'raw':  pink('UNSORTED'),
+				'addr': pink('ADDRESS')
+			}[sort])
 			+ ('\n\n', '\n')[terse]
 			+ ''.join(format_io('inputs'))
 			+ ''.join(format_io('outputs')))
 
-	def strfmt_locktime(self, locktime=None, terse=False):
+	def strfmt_locktime(self, locktime=None, *, terse=False):
 		# Locktime itself is an unsigned 4-byte integer which can be parsed two ways:
 		#
 		# If less than 500 million, locktime is parsed as a block height. The transaction can be
@@ -143,15 +156,15 @@ class TxInfo(TxInfo):
 		# If greater than or equal to 500 million, locktime is parsed using the Unix epoch time
 		# format (the number of seconds elapsed since 1970-01-01T00:00 UTC). The transaction can be
 		# added to any block whose block time is greater than the locktime.
-		num = locktime or self.tx.locktime
-		if num is None:
-			return '(None)'
-		elif num.bit_length() > 32:
-			die(2, f'{num!r}: invalid nLockTime value (integer size greater than 4 bytes)!')
-		elif num >= 500_000_000:
-			import time
-			return ' '.join(time.strftime('%c', time.gmtime(num)).split()[1:])
-		elif num > 0:
-			return '{}{}'.format(('block height ', '')[terse], num)
-		else:
-			die(2, f'{num!r}: invalid nLockTime value!')
+		match locktime or self.tx.locktime:
+			case None:
+				return '(None)'
+			case num if num.bit_length() > 32:
+				die(2, f'{num!r}: invalid nLockTime value (integer size greater than 4 bytes)!')
+			case num if num >= 500_000_000:
+				import time
+				return ' '.join(time.strftime('%c', time.gmtime(num)).split()[1:])
+			case num if num > 0:
+				return '{}{}'.format(('block height ', '')[terse], num)
+			case num:
+				die(2, f'{num!r}: invalid nLockTime value!')
